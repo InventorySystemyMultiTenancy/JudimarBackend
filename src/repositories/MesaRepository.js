@@ -25,6 +25,28 @@ export class MesaRepository {
     return prisma.mesa.delete({ where: { id } });
   }
 
+  async findAllOpenTotals() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rows = await prisma.$queryRaw`
+      SELECT
+        o."mesaId",
+        SUM(o.total) AS "pendingTotal",
+        COUNT(o.id)  AS "activeCount"
+      FROM "Order" o
+      WHERE o."mesaId" IS NOT NULL
+        AND o."createdAt" >= ${today}
+        AND o.status::text <> 'CANCELADO'
+        AND o."paymentStatus"::text <> 'APROVADO'
+      GROUP BY o."mesaId"
+    `;
+    return rows.map((r) => ({
+      mesaId: r.mesaId,
+      pendingTotal: Number(r.pendingTotal ?? 0),
+      activeCount: Number(r.activeCount ?? 0),
+    }));
+  }
+
   async findOrdersToday(mesaId) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

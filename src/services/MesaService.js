@@ -30,6 +30,10 @@ export class MesaService {
     return this.mesaRepository.findAll();
   }
 
+  async openTotals() {
+    return this.mesaRepository.findAllOpenTotals();
+  }
+
   async update(id, data) {
     const mesa = await this.mesaRepository.findById(id);
     if (!mesa) throw new AppError("Mesa nao encontrada.", 404);

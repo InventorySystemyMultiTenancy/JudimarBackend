@@ -19,6 +19,15 @@ export class MesaController {
     }
   }
 
+  async openTotals(_req, res, next) {
+    try {
+      const totals = await mesaService.openTotals();
+      return res.status(200).json({ data: totals });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async list(_req, res, next) {
     try {
       const mesas = await mesaService.listAll();

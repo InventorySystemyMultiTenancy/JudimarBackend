@@ -427,6 +427,12 @@ app.get(
   authorizeRoles("ADMIN", "ATENDENTE"),
   (req, res, next) => mesaController.list(req, res, next),
 );
+app.get(
+  "/api/mesas/open-totals",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => mesaController.openTotals(req, res, next),
+);
 app.post(
   "/api/mesas",
   authenticateToken,

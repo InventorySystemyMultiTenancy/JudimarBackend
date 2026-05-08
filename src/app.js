@@ -211,6 +211,12 @@ app.patch(
   authorizeRoles("ADMIN"),
   (req, res, next) => productController.restore(req, res, next),
 );
+app.post(
+  "/api/admin/stock/movements",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  (req, res, next) => productController.stockMovement(req, res, next),
+);
 
 app.post("/api/auth/register", authLimiter, (req, res, next) =>
   authController.register(req, res, next),

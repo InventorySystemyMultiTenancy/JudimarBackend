@@ -36,6 +36,22 @@ export class ProductService {
     return this.productRepository.setActive(productId, false);
   }
 
+  async bulkAdjustStock(items, type) {
+    if (!items?.length) throw new AppError("Nenhum item informado.", 422);
+    const VALID_TYPES = ["ENTRADA", "SAIDA"];
+    if (!VALID_TYPES.includes(type))
+      throw new AppError("Tipo deve ser ENTRADA ou SAIDA.", 422);
+    for (const item of items) {
+      if (
+        !item.productId ||
+        !Number.isInteger(item.quantity) ||
+        item.quantity <= 0
+      )
+        throw new AppError("Quantidade deve ser inteiro positivo.", 422);
+    }
+    return this.productRepository.bulkAdjustStock(items, type);
+  }
+
   async restoreProduct(productId) {
     return this.productRepository.setActive(productId, true);
   }

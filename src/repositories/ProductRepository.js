@@ -112,6 +112,20 @@ export class ProductRepository {
     });
   }
 
+  async bulkAdjustStock(items, type) {
+    // items: [{productId, quantity}], type: 'ENTRADA' | 'SAIDA'
+    return prisma.$transaction(
+      items.map(({ productId, quantity }) => {
+        const delta = type === "ENTRADA" ? quantity : -quantity;
+        return prisma.$executeRaw`
+          UPDATE "Product"
+          SET "stock" = GREATEST(0, "stock" + ${delta})
+          WHERE "id" = ${productId}
+        `;
+      }),
+    );
+  }
+
   async findByIdWithSizes(productId) {
     return prisma.product.findUnique({
       where: { id: productId },

@@ -93,6 +93,26 @@ export class ProductController {
     }
   }
 
+  async stockMovement(req, res, next) {
+    try {
+      const { items, type, observation } = req.body;
+      if (!Array.isArray(items) || !type) {
+        return next(new AppError("items e type sao obrigatorios.", 422));
+      }
+      const parsedItems = items.map((i) => ({
+        productId: String(i.productId ?? ""),
+        quantity: Number(i.quantity),
+      }));
+      await productService.bulkAdjustStock(parsedItems, String(type));
+      return res.status(200).json({
+        message: `Movimentacao de ${type} registrada com sucesso.`,
+        observation: observation ?? null,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   #handleError(error, next) {
     if (error instanceof ZodError) {
       return next(

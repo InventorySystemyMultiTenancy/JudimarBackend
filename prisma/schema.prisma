@@ -59,6 +59,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   orders       Order[]
+  purchasePendingLists PurchasePendingList[]
 }
 
 model Product {

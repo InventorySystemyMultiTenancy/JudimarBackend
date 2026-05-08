@@ -1,11 +1,19 @@
 import { prisma } from "../lib/prisma.js";
 
-// Busca categorias via raw SQL (compatível com qualquer versão do Prisma Client)
-async function fetchCategories(ids) {
+// Busca metadados via raw SQL (compatível com qualquer versão do Prisma Client)
+async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category" FROM "Product" WHERE "id" = ANY(${ids})`;
-  return new Map(rows.map((r) => [r.id, r.category ?? "Geral"]));
+    await prisma.$queryRaw`SELECT "id", "category", "stockMinimum" FROM "Product" WHERE "id" = ANY(${ids})`;
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      {
+        category: r.category ?? "Geral",
+        stockMinimum: Number(r.stockMinimum ?? 0),
+      },
+    ]),
+  );
 }
 
 export class ProductRepository {
@@ -15,10 +23,11 @@ export class ProductRepository {
       include: { sizes: { orderBy: { size: "asc" } } },
       orderBy: [{ isCrust: "asc" }, { name: "asc" }],
     });
-    const catMap = await fetchCategories(products.map((p) => p.id));
+    const metaMap = await fetchProductMetadata(products.map((p) => p.id));
     return products.map((p) => ({
       ...p,
-      category: catMap.get(p.id) ?? "Geral",
+      category: metaMap.get(p.id)?.category ?? "Geral",
+      stockMinimum: metaMap.get(p.id)?.stockMinimum ?? 0,
     }));
   }
 
@@ -27,10 +36,11 @@ export class ProductRepository {
       include: { sizes: { orderBy: { size: "asc" } } },
       orderBy: [{ isCrust: "asc" }, { name: "asc" }],
     });
-    const catMap = await fetchCategories(products.map((p) => p.id));
+    const metaMap = await fetchProductMetadata(products.map((p) => p.id));
     return products.map((p) => ({
       ...p,
-      category: catMap.get(p.id) ?? "Geral",
+      category: metaMap.get(p.id)?.category ?? "Geral",
+      stockMinimum: metaMap.get(p.id)?.stockMinimum ?? 0,
     }));
   }
 
@@ -41,9 +51,10 @@ export class ProductRepository {
     category,
     isCrust,
     stock,
+    stockMinimum,
     sizes,
   }) {
-    // category é gravado via raw SQL para ser compatível com qualquer versão do Prisma Client
+    // Campos adicionados depois do Prisma Client podem ser gravados via raw SQL.
     const product = await prisma.product.create({
       data: {
         name,
@@ -62,15 +73,32 @@ export class ProductRepository {
       include: { sizes: { orderBy: { size: "asc" } } },
     });
     const cat = category ?? "Geral";
-    await prisma.$executeRaw`UPDATE "Product" SET "category" = ${cat} WHERE "id" = ${product.id}`;
-    return { ...product, category: cat };
+    const minimum = Number(stockMinimum ?? 0);
+    await prisma.$executeRaw`
+      UPDATE "Product"
+      SET "category" = ${cat}, "stockMinimum" = ${minimum}
+      WHERE "id" = ${product.id}
+    `;
+    return { ...product, category: cat, stockMinimum: minimum };
   }
 
   async update(
     productId,
-    { name, description, imageUrl, category, isCrust, stock, sizes },
+    {
+      name,
+      description,
+      imageUrl,
+      category,
+      isCrust,
+      stock,
+      stockMinimum,
+      sizes,
+    },
   ) {
     return prisma.$transaction(async (tx) => {
+      let resolvedCategory = category;
+      let resolvedStockMinimum = stockMinimum;
+
       await tx.product.update({
         where: { id: productId },
         data: {
@@ -82,8 +110,24 @@ export class ProductRepository {
         },
       });
 
-      if (category !== undefined) {
-        await tx.$executeRaw`UPDATE "Product" SET "category" = ${category} WHERE "id" = ${productId}`;
+      if (category !== undefined || stockMinimum !== undefined) {
+        const existingRow = await tx.$queryRaw`
+          SELECT "category", "stockMinimum"
+          FROM "Product"
+          WHERE "id" = ${productId}
+        `;
+        const current = existingRow?.[0] ?? {};
+        resolvedCategory = category ?? current.category ?? "Geral";
+        resolvedStockMinimum = Number(
+          stockMinimum ?? current.stockMinimum ?? 0,
+        );
+        await tx.$executeRaw`
+          UPDATE "Product"
+          SET
+            "category" = ${resolvedCategory},
+            "stockMinimum" = ${resolvedStockMinimum}
+          WHERE "id" = ${productId}
+        `;
       }
 
       if (sizes) {
@@ -98,10 +142,15 @@ export class ProductRepository {
         });
       }
 
-      return tx.product.findUnique({
+      const updated = await tx.product.findUnique({
         where: { id: productId },
         include: { sizes: { orderBy: { size: "asc" } } },
       });
+      return {
+        ...updated,
+        category: resolvedCategory ?? updated.category ?? "Geral",
+        stockMinimum: Number(resolvedStockMinimum ?? 0),
+      };
     });
   }
 
@@ -127,10 +176,17 @@ export class ProductRepository {
   }
 
   async findByIdWithSizes(productId) {
-    return prisma.product.findUnique({
+    const product = await prisma.product.findUnique({
       where: { id: productId },
       include: { sizes: true },
     });
+    if (!product) return null;
+    const metaMap = await fetchProductMetadata([productId]);
+    return {
+      ...product,
+      category: metaMap.get(productId)?.category ?? "Geral",
+      stockMinimum: metaMap.get(productId)?.stockMinimum ?? 0,
+    };
   }
 
   async findTopSelling(limit = 6) {
@@ -168,7 +224,7 @@ export class ProductRepository {
       },
     });
 
-    const categoryMap = await fetchCategories(
+    const metaMap = await fetchProductMetadata(
       products.map((product) => product.id),
     );
     const productsById = new Map(
@@ -180,7 +236,8 @@ export class ProductRepository {
       .filter(Boolean)
       .map((product) => ({
         ...product,
-        category: categoryMap.get(product.id) ?? "Geral",
+        category: metaMap.get(product.id)?.category ?? "Geral",
+        stockMinimum: metaMap.get(product.id)?.stockMinimum ?? 0,
         soldCount: soldCountById.get(product.id) ?? 0,
       }));
   }

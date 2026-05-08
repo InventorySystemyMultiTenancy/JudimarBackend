@@ -113,6 +113,43 @@ export class ProductController {
     }
   }
 
+  async createPendingPurchaseList(req, res, next) {
+    try {
+      const { items, observation } = req.body;
+      const created = await productService.createPendingPurchaseList({
+        items,
+        observation,
+        createdBy: req.user?.id ?? null,
+      });
+      return res.status(201).json({ data: created });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
+  async listPendingPurchaseLists(_req, res, next) {
+    try {
+      const lists = await productService.listPendingPurchaseLists();
+      return res.status(200).json({ data: lists });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
+  async confirmPendingPurchaseList(req, res, next) {
+    try {
+      const result = await productService.confirmPendingPurchaseList(
+        req.params.listId,
+      );
+      return res.status(200).json({
+        message: "Lista confirmada e entrada no estoque registrada.",
+        data: result,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   #handleError(error, next) {
     if (error instanceof ZodError) {
       return next(

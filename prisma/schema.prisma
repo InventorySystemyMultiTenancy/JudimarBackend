@@ -76,6 +76,33 @@ model Product {
 
   sizes       ProductSize[]
   orderItems  OrderItem[]
+  purchaseItems PurchasePendingListItem[]
+}
+
+model PurchasePendingList {
+  id          String                  @id @default(cuid())
+  observation String?
+  createdBy   String?
+  createdAt   DateTime                @default(now())
+
+  creator     User?                   @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  items       PurchasePendingListItem[]
+
+  @@index([createdAt])
+}
+
+model PurchasePendingListItem {
+  id          String             @id @default(cuid())
+  listId      String
+  productId   String
+  quantity    Int
+  createdAt   DateTime           @default(now())
+
+  list        PurchasePendingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  product     Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([listId])
+  @@index([productId])
 }
 
 model Addon {

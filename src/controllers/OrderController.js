@@ -154,7 +154,7 @@ export class OrderController {
   async adminUpdatePaymentStatus(req, res, next) {
     try {
       const { paymentStatus } = req.body;
-      const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO"];
+      const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO", "ESTORNADO"];
       if (!ALLOWED.includes(paymentStatus)) {
         throw new AppError("paymentStatus inválido.", 422);
       }

@@ -550,8 +550,6 @@ app.post(
 );
 app.get(
   "/api/comandas/token/:token/summary",
-  authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
   (req, res, next) => comandaController.summaryByToken(req, res, next),
 );
 

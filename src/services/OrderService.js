@@ -259,7 +259,15 @@ export class OrderService {
       throw new AppError("Pedido nao encontrado.", 404);
     }
 
-    const allowedTransitions = ORDER_TRANSITIONS[order.status] ?? [];
+    const allowedTransitions = [...(ORDER_TRANSITIONS[order.status] ?? [])];
+
+    if (
+      order.status === "PREPARANDO" &&
+      nextStatus === "SAIU_PARA_ENTREGA" &&
+      (order.mesaId || order.isPickup)
+    ) {
+      allowedTransitions.push("SAIU_PARA_ENTREGA");
+    }
 
     if (!allowedTransitions.includes(nextStatus)) {
       throw new AppError(

@@ -101,7 +101,7 @@ export class OrderRepository {
     let rows;
     try {
       rows = await prisma.$queryRawUnsafe(
-        `SELECT oi.*, p.name AS "productName", p."waiterOnly" AS "productWaiterOnly"
+        `SELECT oi.*, p.name AS "productName", p."imageUrl" AS "productImageUrl", p."waiterOnly" AS "productWaiterOnly"
          FROM "OrderItem" oi
          LEFT JOIN "Product" p ON p.id = oi."productId"
          WHERE oi."orderId" IN (${ph})`,
@@ -130,6 +130,7 @@ export class OrderRepository {
              oi."removed_ingredients" AS "removedIngredients",
              oi.notes,
              p.name AS "productName",
+             p."imageUrl" AS "productImageUrl",
              p."waiterOnly" AS "productWaiterOnly"
            FROM "OrderItem" oi
            LEFT JOIN "Product" p ON p.id = oi."product_id"
@@ -171,6 +172,7 @@ export class OrderRepository {
             ]),
             notes: this._pick(row, ["notes"]),
             productName: null,
+            productImageUrl: null,
             productWaiterOnly: false,
           }))
           .filter((row) => orderIds.includes(row.orderId));
@@ -183,6 +185,8 @@ export class OrderRepository {
         ? {
             id: row.productId,
             name: row.productName,
+            imageUrl: row.productImageUrl,
+            image: row.productImageUrl,
             waiterOnly: Boolean(row.productWaiterOnly),
           }
         : null,
@@ -347,7 +351,7 @@ export class OrderRepository {
     const order = rows[0];
 
     const items = await prisma.$queryRaw`
-      SELECT oi.*, p.name AS "productName", p."waiterOnly" AS "productWaiterOnly"
+      SELECT oi.*, p.name AS "productName", p."imageUrl" AS "productImageUrl", p."waiterOnly" AS "productWaiterOnly"
       FROM "OrderItem" oi
       LEFT JOIN "Product" p ON p.id = oi."productId"
       WHERE oi."orderId" = ${orderId}
@@ -363,6 +367,8 @@ export class OrderRepository {
           ? {
               id: item.productId,
               name: item.productName,
+              imageUrl: item.productImageUrl,
+              image: item.productImageUrl,
               waiterOnly: Boolean(item.productWaiterOnly),
             }
           : null,

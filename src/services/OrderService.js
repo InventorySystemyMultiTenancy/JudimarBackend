@@ -259,6 +259,10 @@ export class OrderService {
       throw new AppError("Pedido nao encontrado.", 404);
     }
 
+    if (order.status === nextStatus) {
+      return order;
+    }
+
     const allowedTransitions = [...(ORDER_TRANSITIONS[order.status] ?? [])];
 
     if (

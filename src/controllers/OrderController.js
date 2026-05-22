@@ -154,13 +154,26 @@ export class OrderController {
   async adminUpdatePaymentStatus(req, res, next) {
     try {
       const { paymentStatus } = req.body;
+      const paymentMethod = req.body?.paymentMethod;
       const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO", "ESTORNADO"];
+      const ALLOWED_METHODS = ["CREDITO", "DEBITO", "PIX", "DINHEIRO"];
       if (!ALLOWED.includes(paymentStatus)) {
         throw new AppError("paymentStatus inválido.", 422);
+      }
+      if (paymentStatus === "APROVADO" && !paymentMethod) {
+        throw new AppError("Escolha a forma de pagamento.", 422);
+      }
+      if (
+        paymentStatus === "APROVADO" &&
+        paymentMethod !== undefined &&
+        !ALLOWED_METHODS.includes(paymentMethod)
+      ) {
+        throw new AppError("paymentMethod inválido.", 422);
       }
       const order = await orderService.adminSetPaymentStatus(
         req.params.orderId,
         paymentStatus,
+        paymentStatus === "APROVADO" ? paymentMethod : undefined,
       );
       return res
         .status(200)
@@ -319,9 +332,15 @@ export class OrderController {
 
   async markPaid(req, res, next) {
     try {
+      const paymentMethod = req.body?.paymentMethod;
+      const ALLOWED_METHODS = ["CREDITO", "DEBITO", "PIX", "DINHEIRO"];
+      if (!ALLOWED_METHODS.includes(paymentMethod)) {
+        throw new AppError("Escolha a forma de pagamento.", 422);
+      }
       const order = await orderService.markPaidByMotoboy(
         req.params.orderId,
         req.user,
+        paymentMethod,
       );
       return res
         .status(200)

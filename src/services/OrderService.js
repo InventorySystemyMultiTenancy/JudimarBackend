@@ -671,10 +671,14 @@ export class OrderService {
     };
   }
 
-  async adminSetPaymentStatus(orderId, paymentStatus) {
+  async adminSetPaymentStatus(orderId, paymentStatus, paymentMethod) {
     const order = await this.orderRepository.findById(orderId);
     if (!order) throw new AppError("Pedido não encontrado.", 404);
-    return this.orderRepository.updatePaymentStatus(orderId, paymentStatus);
+    return this.orderRepository.updatePaymentStatus(
+      orderId,
+      paymentStatus,
+      paymentMethod,
+    );
   }
 
   /**
@@ -824,8 +828,11 @@ export class OrderService {
     }
 
     // All paid orders (unfiltered) — used for today/month sub-metrics
-    const allPaidOrders = orders.filter(
+    const allApprovedOrders = orders.filter(
       (order) => order.paymentStatus === "APROVADO",
+    );
+    const allPaidOrders = allApprovedOrders.filter(
+      (order) => order.status !== "CANCELADO",
     );
 
     // Paid orders filtered to the selected period — used for main totals
@@ -842,6 +849,11 @@ export class OrderService {
           return d >= rangeStart && d <= rangeEnd;
         })
       : orders;
+
+    const refundPendingOrders = filteredOrders.filter(
+      (order) =>
+        order.status === "CANCELADO" && order.paymentStatus === "APROVADO",
+    );
 
     const paidToday = allPaidOrders.filter(
       (order) => new Date(order.createdAt) >= todayStart,
@@ -884,6 +896,41 @@ export class OrderService {
       acc[order.status] = (acc[order.status] ?? 0) + 1;
       return acc;
     }, {});
+
+    const paymentMethodLabels = {
+      CREDITO: "Crédito",
+      DEBITO: "Débito",
+      PIX: "Pix",
+      DINHEIRO: "Dinheiro",
+      mercado_pago: "Mercado Pago",
+      nao_informado: "Não informado",
+    };
+
+    const paymentMethodMap = new Map();
+    for (const order of paidOrders) {
+      const method = order.paymentMethod || "nao_informado";
+      const current = paymentMethodMap.get(method) ?? {
+        method,
+        label: paymentMethodLabels[method] ?? method,
+        orders: 0,
+        revenue: 0,
+      };
+      current.orders += 1;
+      current.revenue += Number(order.total);
+      paymentMethodMap.set(method, current);
+    }
+
+    const orderTypeMap = new Map([
+      ["MESA", { type: "MESA", label: "Mesa", orders: 0, revenue: 0 }],
+      ["RETIRADA", { type: "RETIRADA", label: "Retirada", orders: 0, revenue: 0 }],
+      ["ENTREGA", { type: "ENTREGA", label: "Entrega", orders: 0, revenue: 0 }],
+    ]);
+    for (const order of paidOrders) {
+      const type = order.mesaId ? "MESA" : order.isPickup ? "RETIRADA" : "ENTREGA";
+      const current = orderTypeMap.get(type);
+      current.orders += 1;
+      current.revenue += Number(order.total);
+    }
 
     // Determine chart range and grouping
     const last7DaysStart = new Date(todayStart);
@@ -972,9 +1019,28 @@ export class OrderService {
         profitThisMonth: Number((revenueThisMonth - costThisMonth).toFixed(2)),
         ordersCount: filteredOrders.length,
         paidOrdersCount: paidOrders.length,
+        approvedOrdersCount: paidOrders.length,
+        refundPendingCount: refundPendingOrders.length,
+        refundPendingTotal: Number(
+          refundPendingOrders
+            .reduce((sum, order) => sum + Number(order.total), 0)
+            .toFixed(2),
+        ),
         averageTicket: Number(averageTicket.toFixed(2)),
       },
       statusCounts,
+      paymentMethods: [...paymentMethodMap.values()]
+        .map((item) => ({
+          ...item,
+          revenue: Number(item.revenue.toFixed(2)),
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+      orderTypes: [...orderTypeMap.values()]
+        .map((item) => ({
+          ...item,
+          revenue: Number(item.revenue.toFixed(2)),
+        }))
+        .filter((item) => item.orders > 0),
       dailySales: [...salesMap.entries()].map(([date, { revenue, cost }]) => ({
         date,
         revenue: Number(revenue.toFixed(2)),
@@ -1043,7 +1109,7 @@ export class OrderService {
     }
   }
 
-  async markPaidByMotoboy(orderId, user) {
+  async markPaidByMotoboy(orderId, user, paymentMethod) {
     const order = await this.orderRepository.findById(orderId);
     if (!order) {
       throw new AppError("Pedido não encontrado.", 404);
@@ -1085,6 +1151,7 @@ export class OrderService {
     const updatedOrder = await this.orderRepository.updatePaymentStatus(
       orderId,
       "APROVADO",
+      paymentMethod,
     );
 
     emitPaymentUpdated({

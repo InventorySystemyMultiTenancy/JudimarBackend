@@ -101,7 +101,7 @@ export class OrderRepository {
     let rows;
     try {
       rows = await prisma.$queryRawUnsafe(
-        `SELECT oi.*, p.name AS "productName"
+        `SELECT oi.*, p.name AS "productName", p."waiterOnly" AS "productWaiterOnly"
          FROM "OrderItem" oi
          LEFT JOIN "Product" p ON p.id = oi."productId"
          WHERE oi."orderId" IN (${ph})`,
@@ -129,7 +129,8 @@ export class OrderRepository {
              oi.addons,
              oi."removed_ingredients" AS "removedIngredients",
              oi.notes,
-             p.name AS "productName"
+             p.name AS "productName",
+             p."waiterOnly" AS "productWaiterOnly"
            FROM "OrderItem" oi
            LEFT JOIN "Product" p ON p.id = oi."product_id"
            WHERE oi."order_id" IN (${ph})`,
@@ -170,6 +171,7 @@ export class OrderRepository {
             ]),
             notes: this._pick(row, ["notes"]),
             productName: null,
+            productWaiterOnly: false,
           }))
           .filter((row) => orderIds.includes(row.orderId));
       }
@@ -178,7 +180,11 @@ export class OrderRepository {
     return rows.map((row) => ({
       ...row,
       product: row.productName
-        ? { id: row.productId, name: row.productName }
+        ? {
+            id: row.productId,
+            name: row.productName,
+            waiterOnly: Boolean(row.productWaiterOnly),
+          }
         : null,
     }));
   }
@@ -341,7 +347,7 @@ export class OrderRepository {
     const order = rows[0];
 
     const items = await prisma.$queryRaw`
-      SELECT oi.*, p.name AS "productName"
+      SELECT oi.*, p.name AS "productName", p."waiterOnly" AS "productWaiterOnly"
       FROM "OrderItem" oi
       LEFT JOIN "Product" p ON p.id = oi."productId"
       WHERE oi."orderId" = ${orderId}
@@ -349,7 +355,20 @@ export class OrderRepository {
     const payments = await prisma.$queryRaw`
       SELECT * FROM "Payment" WHERE "orderId" = ${orderId}
     `;
-    return { ...order, items, payment: payments[0] ?? null };
+    return {
+      ...order,
+      items: items.map((item) => ({
+        ...item,
+        product: item.productName
+          ? {
+              id: item.productId,
+              name: item.productName,
+              waiterOnly: Boolean(item.productWaiterOnly),
+            }
+          : null,
+      })),
+      payment: payments[0] ?? null,
+    };
   }
 
   async findByIdWithUser(orderId) {
@@ -387,10 +406,13 @@ export class OrderRepository {
     return this.findById(orderId);
   }
 
-  async updatePaymentStatus(orderId, paymentStatus) {
+  async updatePaymentStatus(orderId, paymentStatus, paymentMethod) {
     return prisma.order.update({
       where: { id: orderId },
-      data: { paymentStatus },
+      data: {
+        paymentStatus,
+        ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+      },
     });
   }
 
@@ -802,21 +824,23 @@ export class OrderRepository {
     const whereClause = conditions.length
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
-    const limitClause = hasFilter ? "" : "LIMIT 15";
-
     const orders = await prisma.$queryRawUnsafe(
-      `SELECT o.id, o."userId", o.status::text AS status,
+      `SELECT o.id, o."userId", o."mesaId", o.status::text AS status,
               o."paymentStatus"::text AS "paymentStatus",
               o."deliveryAddress", o.notes, o."paymentMethod",
               o.total, o."deliveryFee", o."deliveryLat", o."deliveryLon",
-              o."isPickup", o."assignedMotoboyId",
+              o."isPickup", o."assignedMotoboyId", o."deliveryCode",
+              o."terminalIntentId",
               o."createdAt", o."updatedAt", o."deliveredAt",
-              u.name AS "userName"
+              u.name AS "userName",
+              mesa.id AS "mesaTableId", mesa.name AS "mesaName", mesa.number AS "mesaNumber",
+              motoboy.name AS "motoboyName"
        FROM "Order" o
        LEFT JOIN "User" u ON u.id = o."userId"
+       LEFT JOIN "Mesa" mesa ON mesa.id = o."mesaId"
+       LEFT JOIN "User" motoboy ON motoboy.id = o."assignedMotoboyId"
        ${whereClause}
-       ORDER BY o."createdAt" DESC
-       ${limitClause}`,
+       ORDER BY o."createdAt" DESC`,
       ...params,
     );
 
@@ -829,7 +853,17 @@ export class OrderRepository {
 
     return orders.map((o) => ({
       ...o,
-      user: { id: o.userId, name: o.userName },
+      user: o.userId ? { id: o.userId, name: o.userName } : null,
+      mesa: o.mesaId
+        ? {
+            id: o.mesaTableId ?? o.mesaId,
+            name: o.mesaName,
+            number: o.mesaNumber,
+          }
+        : null,
+      assignedMotoboy: o.assignedMotoboyId
+        ? { id: o.assignedMotoboyId, name: o.motoboyName }
+        : null,
       items: items.filter((i) => i.orderId === o.id),
       payment: payments.find((p) => p.orderId === o.id) ?? null,
     }));
@@ -839,7 +873,8 @@ export class OrderRepository {
     const orders = await prisma.$queryRaw`
       SELECT o.id, o."userId", o.status::text AS status,
              o."paymentStatus"::text AS "paymentStatus",
-             o.total, o."deliveryFee", o."createdAt"
+             o.total, o."deliveryFee", o."paymentMethod",
+             o."mesaId", o."isPickup", o."createdAt"
       FROM "Order" o
       ORDER BY o."createdAt" ASC
     `;

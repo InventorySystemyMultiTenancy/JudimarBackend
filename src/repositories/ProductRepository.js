@@ -36,6 +36,7 @@ function attachMetadata(product, metaMap) {
     ...rest,
     category: meta?.category ?? "Geral",
     availableDays: meta?.availableDays ?? [],
+    waiterOnly: meta?.waiterOnly ?? false,
   };
 }
 
@@ -43,13 +44,14 @@ function attachMetadata(product, metaMap) {
 async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category", "availableDays" FROM "Product" WHERE "id" = ANY(${ids})`;
+    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly" FROM "Product" WHERE "id" = ANY(${ids})`;
   return new Map(
     rows.map((r) => [
       r.id,
       {
         category: r.category ?? "Geral",
         availableDays: normalizeAvailableDays(r.availableDays),
+        waiterOnly: Boolean(r.waiterOnly),
       },
     ]),
   );
@@ -83,6 +85,7 @@ export class ProductRepository {
     imageUrl,
     category,
     availableDays,
+    waiterOnly,
     isCrust,
     sizes,
   }) {
@@ -109,20 +112,36 @@ export class ProductRepository {
       UPDATE "Product"
       SET
         "category" = ${cat},
-        "availableDays" = ${days}
+        "availableDays" = ${days},
+        "waiterOnly" = ${Boolean(waiterOnly)}
       WHERE "id" = ${product.id}
     `;
     const { stock, stockMinimum, ...rest } = product;
-    return { ...rest, category: cat, availableDays: days };
+    return {
+      ...rest,
+      category: cat,
+      availableDays: days,
+      waiterOnly: Boolean(waiterOnly),
+    };
   }
 
   async update(
     productId,
-    { name, description, imageUrl, category, availableDays, isCrust, sizes },
+    {
+      name,
+      description,
+      imageUrl,
+      category,
+      availableDays,
+      waiterOnly,
+      isCrust,
+      sizes,
+    },
   ) {
     return prisma.$transaction(async (tx) => {
       let resolvedCategory = category;
       let resolvedAvailableDays = availableDays;
+      let resolvedWaiterOnly = waiterOnly;
 
       await tx.product.update({
         where: { id: productId },
@@ -134,9 +153,13 @@ export class ProductRepository {
         },
       });
 
-      if (category !== undefined || availableDays !== undefined) {
+      if (
+        category !== undefined ||
+        availableDays !== undefined ||
+        waiterOnly !== undefined
+      ) {
         const existingRow = await tx.$queryRaw`
-          SELECT "category", "availableDays"
+          SELECT "category", "availableDays", "waiterOnly"
           FROM "Product"
           WHERE "id" = ${productId}
         `;
@@ -146,11 +169,14 @@ export class ProductRepository {
           availableDays !== undefined
             ? normalizeAvailableDays(availableDays)
             : normalizeAvailableDays(current.availableDays);
+        resolvedWaiterOnly =
+          waiterOnly !== undefined ? Boolean(waiterOnly) : current.waiterOnly;
         await tx.$executeRaw`
           UPDATE "Product"
           SET
             "category" = ${resolvedCategory},
-            "availableDays" = ${resolvedAvailableDays}
+            "availableDays" = ${resolvedAvailableDays},
+            "waiterOnly" = ${Boolean(resolvedWaiterOnly)}
           WHERE "id" = ${productId}
         `;
       }
@@ -177,6 +203,7 @@ export class ProductRepository {
         category: resolvedCategory ?? updated?.category ?? "Geral",
         availableDays:
           resolvedAvailableDays ?? updated?.availableDays ?? [],
+        waiterOnly: resolvedWaiterOnly ?? updated?.waiterOnly ?? false,
       };
     });
   }

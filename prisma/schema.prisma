@@ -135,7 +135,7 @@ model Order {
   id             String       @id @default(cuid())
   userId         String?
   mesaId         String?
-  status         OrderStatus  @default(RECEBIDO)
+  status         OrderStatus  @default(PREPARANDO)
   total          Decimal      @db.Decimal(10, 2)
   paymentStatus  PaymentStatus @default(PENDENTE)
   deliveryAddress String?

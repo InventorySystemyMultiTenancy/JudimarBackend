@@ -211,33 +211,6 @@ app.patch(
   authorizeRoles("ADMIN"),
   (req, res, next) => productController.restore(req, res, next),
 );
-app.post(
-  "/api/admin/stock/movements",
-  authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
-  (req, res, next) => productController.stockMovement(req, res, next),
-);
-app.get(
-  "/api/admin/purchase-lists/pending",
-  authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
-  (req, res, next) =>
-    productController.listPendingPurchaseLists(req, res, next),
-);
-app.post(
-  "/api/admin/purchase-lists/pending",
-  authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
-  (req, res, next) =>
-    productController.createPendingPurchaseList(req, res, next),
-);
-app.post(
-  "/api/admin/purchase-lists/pending/:listId/confirm",
-  authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
-  (req, res, next) =>
-    productController.confirmPendingPurchaseList(req, res, next),
-);
 
 app.post("/api/auth/register", authLimiter, (req, res, next) =>
   authController.register(req, res, next),

@@ -68,177 +68,146 @@ export class OrderService {
       throw new AppError("Pedido deve conter ao menos 1 item.", 422);
     }
 
-    const order = await prisma.$transaction(async (tx) => {
-      const normalizedItems = [];
+    const order = await prisma.$transaction(
+      async (tx) => {
+        const normalizedItems = [];
 
-      for (const item of items) {
-        const normalized = await this.#normalizeItemInTransaction(tx, item);
-        normalizedItems.push(normalized);
-      }
-
-      const totalCents = normalizedItems.reduce(
-        (acc, item) => acc + item.totalPriceCents,
-        0,
-      );
-
-      for (const item of normalizedItems) {
-        const product = await tx.product.findFirst({
-          where: { id: item.productId, isActive: true },
-          select: { stock: true },
-        });
-
-        if (!product) {
-          throw new AppError(
-            `Produto ${item.productId} não encontrado ou inativo.`,
-            422,
-          );
+        for (const item of items) {
+          const normalized = await this.#normalizeItemInTransaction(tx, item);
+          normalizedItems.push(normalized);
         }
 
-        if (product.stock === 0) {
-          throw new AppError(`Produto ${item.productId} está esgotado.`, 409);
-        }
-
-        const decremented = await tx.product.updateMany({
-          where: {
-            id: item.productId,
-            isActive: true,
-            stock: { gte: item.quantity },
-          },
-          data: { stock: { decrement: item.quantity } },
-        });
-
-        if (decremented.count === 0) {
-          throw new AppError(
-            `Estoque insuficiente para o produto ${item.productId}.`,
-            409,
-          );
-        }
-      }
-
-      const paymentPayload = {
-        provider: "MERCADO_PAGO",
-        amount: new Prisma.Decimal(fromCents(totalCents)),
-        status: "PENDENTE",
-        payload: {
-          paymentMethod: paymentMethod || "nao_informado",
-        },
-      };
-
-      const orderCreateData = {
-        ...(userId ? { userId } : {}),
-        ...(mesaId ? { mesaId } : {}),
-        deliveryAddress: deliveryAddress ?? null,
-        notes,
-        total: new Prisma.Decimal(fromCents(totalCents)),
-        paymentStatus: "PENDENTE",
-        ...(isPickup != null ? { isPickup } : {}),
-        ...(isPickup
-          ? {}
-          : {
-              deliveryCode: String(Math.floor(1000 + Math.random() * 9000)),
-            }),
-        ...(paymentMethod != null ? { paymentMethod } : {}),
-        ...(deliveryFee != null
-          ? { deliveryFee: new Prisma.Decimal(deliveryFee) }
-          : {}),
-        ...(deliveryLat != null ? { deliveryLat } : {}),
-        ...(deliveryLon != null ? { deliveryLon } : {}),
-        items: {
-          create: normalizedItems.map((item) => ({
-            quantity: item.quantity,
-            unitPrice: new Prisma.Decimal(fromCents(item.unitPriceCents)),
-            totalPrice: new Prisma.Decimal(fromCents(item.totalPriceCents)),
-            productId: item.productId,
-            addons: item.addons,
-            removedIngredients: item.removedIngredients,
-            notes: item.notes ?? null,
-          })),
-        },
-        payment: {
-          create: paymentPayload,
-        },
-      };
-
-      try {
-        return await tx.order.create({
-          data: orderCreateData,
-          include: {
-            items: true,
-            payment: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-        });
-      } catch (error) {
-        if (!this.#isMissingColumnError(error)) {
-          throw error;
-        }
-
-        console.warn(
-          "[OrderService.createOrder] Fallback por coluna ausente no banco:",
-          error.message,
+        const totalCents = normalizedItems.reduce(
+          (acc, item) => acc + item.totalPriceCents,
+          0,
         );
 
-        const orderColumns = await this.#getTableColumns(tx, "Order");
-        const compatibleOrderData = this.#buildOrderDataForColumns(
-          orderCreateData,
-          orderColumns,
-        );
+        const paymentPayload = {
+          provider: "MERCADO_PAGO",
+          amount: new Prisma.Decimal(fromCents(totalCents)),
+          status: "PENDENTE",
+          payload: {
+            paymentMethod: paymentMethod || "nao_informado",
+          },
+        };
+
+        const orderCreateData = {
+          ...(userId ? { userId } : {}),
+          ...(mesaId ? { mesaId } : {}),
+          deliveryAddress: deliveryAddress ?? null,
+          notes,
+          total: new Prisma.Decimal(fromCents(totalCents)),
+          paymentStatus: "PENDENTE",
+          ...(isPickup != null ? { isPickup } : {}),
+          ...(isPickup
+            ? {}
+            : {
+                deliveryCode: String(Math.floor(1000 + Math.random() * 9000)),
+              }),
+          ...(paymentMethod != null ? { paymentMethod } : {}),
+          ...(deliveryFee != null
+            ? { deliveryFee: new Prisma.Decimal(deliveryFee) }
+            : {}),
+          ...(deliveryLat != null ? { deliveryLat } : {}),
+          ...(deliveryLon != null ? { deliveryLon } : {}),
+          items: {
+            create: normalizedItems.map((item) => ({
+              quantity: item.quantity,
+              unitPrice: new Prisma.Decimal(fromCents(item.unitPriceCents)),
+              totalPrice: new Prisma.Decimal(fromCents(item.totalPriceCents)),
+              productId: item.productId,
+              addons: item.addons,
+              removedIngredients: item.removedIngredients,
+              notes: item.notes ?? null,
+            })),
+          },
+          payment: {
+            create: paymentPayload,
+          },
+        };
 
         try {
           return await tx.order.create({
-            data: compatibleOrderData,
+            data: orderCreateData,
             include: {
               items: true,
               payment: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
             },
           });
-        } catch (compatError) {
-          if (!this.#isMissingColumnError(compatError)) {
-            throw compatError;
+        } catch (error) {
+          if (!this.#isMissingColumnError(error)) {
+            throw error;
           }
 
           console.warn(
-            "[OrderService.createOrder] Fallback sem nested payment por coluna ausente:",
-            compatError.message,
+            "[OrderService.createOrder] Fallback por coluna ausente no banco:",
+            error.message,
           );
 
-          const dataWithoutNestedPayment = { ...compatibleOrderData };
-          delete dataWithoutNestedPayment.payment;
-
-          const createdOrder = await tx.order.create({
-            data: dataWithoutNestedPayment,
-            include: { items: true },
-          });
+          const orderColumns = await this.#getTableColumns(tx, "Order");
+          const compatibleOrderData = this.#buildOrderDataForColumns(
+            orderCreateData,
+            orderColumns,
+          );
 
           try {
-            await tx.payment.create({
-              data: {
-                orderId: createdOrder.id,
-                ...paymentPayload,
+            return await tx.order.create({
+              data: compatibleOrderData,
+              include: {
+                items: true,
+                payment: true,
               },
             });
-          } catch (paymentError) {
-            if (!this.#isMissingColumnError(paymentError)) {
-              throw paymentError;
+          } catch (compatError) {
+            if (!this.#isMissingColumnError(compatError)) {
+              throw compatError;
             }
 
             console.warn(
-              "[OrderService.createOrder] Payment não criado por schema legado:",
-              paymentError.message,
+              "[OrderService.createOrder] Fallback sem nested payment por coluna ausente:",
+              compatError.message,
             );
-          }
 
-          return { ...createdOrder, payment: null };
+            const dataWithoutNestedPayment = { ...compatibleOrderData };
+            delete dataWithoutNestedPayment.payment;
+
+            const createdOrder = await tx.order.create({
+              data: dataWithoutNestedPayment,
+              include: { items: true },
+            });
+
+            try {
+              await tx.payment.create({
+                data: {
+                  orderId: createdOrder.id,
+                  ...paymentPayload,
+                },
+              });
+            } catch (paymentError) {
+              if (!this.#isMissingColumnError(paymentError)) {
+                throw paymentError;
+              }
+
+              console.warn(
+                "[OrderService.createOrder] Payment não criado por schema legado:",
+                paymentError.message,
+              );
+            }
+
+            return { ...createdOrder, payment: null };
+          }
         }
-      }
-    }, { timeout: 30000 });
+      },
+      { timeout: 30000 },
+    );
 
     emitOrderCreated({
       orderId: order.id,

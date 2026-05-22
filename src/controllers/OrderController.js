@@ -155,6 +155,7 @@ export class OrderController {
     try {
       const { paymentStatus } = req.body;
       const paymentMethod = req.body?.paymentMethod;
+      const payLater = req.body?.payLater === true;
       const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO", "ESTORNADO"];
       const ALLOWED_METHODS = ["CREDITO", "DEBITO", "PIX", "DINHEIRO"];
       if (!ALLOWED.includes(paymentStatus)) {
@@ -173,7 +174,11 @@ export class OrderController {
       const order = await orderService.adminSetPaymentStatus(
         req.params.orderId,
         paymentStatus,
-        paymentStatus === "APROVADO" ? paymentMethod : undefined,
+        paymentStatus === "APROVADO"
+          ? paymentMethod
+          : payLater && paymentStatus === "PENDENTE"
+            ? "PAGAR_DEPOIS"
+            : undefined,
       );
       return res
         .status(200)

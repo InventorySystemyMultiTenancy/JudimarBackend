@@ -48,6 +48,7 @@ export class OrderService {
   async createOrder({
     userId,
     mesaId,
+    comandaId,
     deliveryAddress,
     notes,
     items,
@@ -57,9 +58,9 @@ export class OrderService {
     deliveryLon,
     isPickup,
   }) {
-    if (!userId && !mesaId) {
+    if (!userId && !mesaId && !comandaId) {
       throw new AppError(
-        "Pedido deve ser vinculado a um usuario ou mesa.",
+        "Pedido deve ser vinculado a um usuario, mesa ou comanda.",
         422,
       );
     }
@@ -94,6 +95,7 @@ export class OrderService {
         const orderCreateData = {
           ...(userId ? { userId } : {}),
           ...(mesaId ? { mesaId } : {}),
+          ...(comandaId ? { comandaId } : {}),
           deliveryAddress: deliveryAddress ?? null,
           notes,
           status: "PREPARANDO",
@@ -214,6 +216,7 @@ export class OrderService {
       orderId: order.id,
       userId: order.userId,
       mesaId: order.mesaId,
+      comandaId: order.comandaId,
       status: order.status ?? "PREPARANDO",
       total: Number(order.total ?? 0),
     });
@@ -1147,9 +1150,9 @@ export class OrderService {
         );
       }
     } else if (["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(user?.role)) {
-      if (!order.mesaId) {
+      if (!order.mesaId && !order.comandaId) {
         throw new AppError(
-          "Somente pedidos vinculados a mesa podem ser baixados por atendimento.",
+          "Somente pedidos vinculados a mesa ou comanda podem ser baixados por atendimento.",
           409,
         );
       }

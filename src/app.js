@@ -8,6 +8,7 @@ import { OrderController } from "./controllers/OrderController.js";
 import { PaymentController } from "./controllers/PaymentController.js";
 import { ProductController } from "./controllers/ProductController.js";
 import { MesaController } from "./controllers/MesaController.js";
+import { ComandaController } from "./controllers/ComandaController.js";
 import {
   authenticateToken,
   authorizeRoles,
@@ -44,6 +45,7 @@ const orderController = new OrderController();
 const paymentController = new PaymentController();
 const productController = new ProductController();
 const mesaController = new MesaController();
+const comandaController = new ComandaController();
 
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -491,6 +493,61 @@ app.post(
 );
 
 // Mesa: chamar garçom via socket
+app.get(
+  "/api/comandas",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => comandaController.list(req, res, next),
+);
+app.get(
+  "/api/comandas/open-totals",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => comandaController.openTotals(req, res, next),
+);
+app.post(
+  "/api/comandas",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  (req, res, next) => comandaController.create(req, res, next),
+);
+app.put(
+  "/api/comandas/:comandaId",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  (req, res, next) => comandaController.update(req, res, next),
+);
+app.delete(
+  "/api/comandas/:comandaId",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  (req, res, next) => comandaController.delete(req, res, next),
+);
+app.post(
+  "/api/comandas/:comandaId/regenerar-token",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  (req, res, next) => comandaController.regenerateToken(req, res, next),
+);
+app.get(
+  "/api/comandas/:comandaId/orders",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => comandaController.ordersByComanda(req, res, next),
+);
+app.post(
+  "/api/comandas/:comandaId/orders",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.create(req, res, next),
+);
+app.get(
+  "/api/comandas/token/:token/summary",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => comandaController.summaryByToken(req, res, next),
+);
+
 const chamarGarcomLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
   max: 3,

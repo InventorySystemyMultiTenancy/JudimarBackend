@@ -49,6 +49,7 @@ export class OrderRepository {
       id: this._pick(raw, ["id"]),
       userId: this._pick(raw, ["userId", "user_id", "userid"]),
       mesaId: this._pick(raw, ["mesaId", "mesa_id", "mesaid"]),
+      comandaId: this._pick(raw, ["comandaId", "comanda_id", "comandaid"]),
       status: this._pick(raw, ["status"], "RECEBIDO"),
       paymentStatus: this._pick(
         raw,
@@ -339,7 +340,7 @@ export class OrderRepository {
 
   async findById(orderId) {
     const rows = await prisma.$queryRaw`
-      SELECT o.id, o."userId", o."mesaId", o.status::text AS status,
+      SELECT o.id, o."userId", o."mesaId", o."comandaId", o.status::text AS status,
              o."paymentStatus"::text AS "paymentStatus",
              o."deliveryAddress", o.notes, o."paymentMethod",
              o.total, o."deliveryFee", o."deliveryLat", o."deliveryLon",
@@ -379,7 +380,7 @@ export class OrderRepository {
 
   async findByIdWithUser(orderId) {
     const rows = await prisma.$queryRaw`
-      SELECT o.id, o."userId", o."mesaId", o.status::text AS status,
+      SELECT o.id, o."userId", o."mesaId", o."comandaId", o.status::text AS status,
              o."paymentStatus"::text AS "paymentStatus",
              u.id AS "uId", u.role::text AS "uRole"
       FROM "Order" o
@@ -392,6 +393,7 @@ export class OrderRepository {
       id: r.id,
       userId: r.userId,
       mesaId: r.mesaId,
+      comandaId: r.comandaId,
       status: r.status,
       paymentStatus: r.paymentStatus,
       user: r.uId ? { id: r.uId, role: r.uRole } : null,
@@ -638,13 +640,30 @@ export class OrderRepository {
     }
   }
 
+  async _fetchComandasForOrders(orderIds) {
+    if (!orderIds.length) return [];
+    const ph = orderIds.map((_, i) => `$${i + 1}`).join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT DISTINCT "comandaId" FROM "Order"
+       WHERE id IN (${ph}) AND "comandaId" IS NOT NULL`,
+      ...orderIds,
+    );
+    const ids = rows.map((r) => r.comandaId).filter(Boolean);
+    if (!ids.length) return [];
+
+    return prisma.comanda.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, number: true },
+    });
+  }
+
   async findAllActive() {
     console.log("[findAllActive] start");
     let orders;
     try {
       orders = await prisma.$queryRaw`
         SELECT
-          o.id, o."userId", o."mesaId", o.status::text AS status,
+             o.id, o."userId", o."mesaId", o."comandaId", o.status::text AS status,
           o."paymentStatus"::text AS "paymentStatus",
           o."deliveryAddress", o.notes, o."paymentMethod",
           o.total, o."deliveryFee", o."deliveryLat", o."deliveryLon",
@@ -752,7 +771,7 @@ export class OrderRepository {
       keys: orders[0] ? Object.keys(orders[0]) : [],
     });
 
-    let items, users, mesas;
+    let items, users, mesas, comandas;
     try {
       items = await this._fetchItemsForOrders(orderIds);
       console.log("[findAllActive] items count=", items.length);
@@ -772,12 +791,18 @@ export class OrderRepository {
     } catch (e) {
       mesas = [];
     }
+    try {
+      comandas = await this._fetchComandasForOrders(orderIds);
+    } catch (e) {
+      comandas = [];
+    }
 
     return orders.map((o) => ({
       ...o,
       items: items.filter((i) => i.orderId === o.id),
       user: users.find((u) => u.id === o.userId) ?? null,
       mesa: mesas.find((m) => m.id === o.mesaId) ?? null,
+      comanda: comandas.find((c) => c.id === o.comandaId) ?? null,
     }));
   }
 

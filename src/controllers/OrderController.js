@@ -18,11 +18,16 @@ export class OrderController {
       const isStaffMesaOrder =
         Boolean(req.params?.mesaId) &&
         ["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(req.user.role);
+      const isStaffComandaOrder =
+        Boolean(req.params?.comandaId) &&
+        ["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(req.user.role);
       const order = await orderService.createOrder({
         ...(isMesa
           ? { mesaId: req.user.id }
           : isStaffMesaOrder
             ? { mesaId: req.params.mesaId }
+            : isStaffComandaOrder
+              ? { comandaId: req.params.comandaId }
             : { userId: req.user.id }),
         ...payload,
       });

@@ -211,6 +211,12 @@ app.patch(
   authorizeRoles("ADMIN"),
   (req, res, next) => productController.restore(req, res, next),
 );
+app.delete(
+  "/api/admin/products/:productId/permanent",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  (req, res, next) => productController.delete(req, res, next),
+);
 
 app.post("/api/auth/register", authLimiter, (req, res, next) =>
   authController.register(req, res, next),

@@ -215,6 +215,23 @@ export class ProductRepository {
     });
   }
 
+  async deletePermanent(productId) {
+    return prisma.$transaction(async (tx) => {
+      const orderItemsCount = await tx.orderItem.count({
+        where: { productId },
+      });
+
+      if (orderItemsCount > 0) {
+        const error = new Error("PRODUCT_HAS_HISTORY");
+        error.code = "PRODUCT_HAS_HISTORY";
+        throw error;
+      }
+
+      await tx.productSize.deleteMany({ where: { productId } });
+      return tx.product.delete({ where: { id: productId } });
+    });
+  }
+
   async findByIdWithSizes(productId) {
     const product = await prisma.product.findUnique({
       where: { id: productId },

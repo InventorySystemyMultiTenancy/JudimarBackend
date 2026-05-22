@@ -93,6 +93,15 @@ export class ProductController {
     }
   }
 
+  async delete(req, res, next) {
+    try {
+      await productService.deleteProduct(req.params.productId);
+      return res.status(200).json({ message: "Produto excluido." });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   #handleError(error, next) {
     if (error instanceof ZodError) {
       return next(

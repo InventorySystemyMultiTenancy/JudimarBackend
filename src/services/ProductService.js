@@ -40,6 +40,23 @@ export class ProductService {
     return this.productRepository.setActive(productId, true);
   }
 
+  async deleteProduct(productId) {
+    const existing = await this.productRepository.findByIdWithSizes(productId);
+    if (!existing) throw new AppError("Produto nao encontrado.", 404);
+
+    try {
+      return await this.productRepository.deletePermanent(productId);
+    } catch (error) {
+      if (error?.code === "PRODUCT_HAS_HISTORY") {
+        throw new AppError(
+          "Produto possui historico de pedidos. Desative para ocultar do cardapio.",
+          409,
+        );
+      }
+      throw error;
+    }
+  }
+
   async getProductById(productId) {
     const product = await this.productRepository.findByIdWithSizes(productId);
 

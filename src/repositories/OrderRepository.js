@@ -806,6 +806,50 @@ export class OrderRepository {
     }));
   }
 
+  async findPendingPayments() {
+    const orders = await prisma.$queryRaw`
+      SELECT
+        o.id, o."userId", o."mesaId", o."comandaId", o.status::text AS status,
+        o."paymentStatus"::text AS "paymentStatus",
+        o."deliveryAddress", o.notes, o."paymentMethod",
+        o.total, o."deliveryFee", o."deliveryLat", o."deliveryLon",
+        o."isPickup", o."assignedMotoboyId",
+        o."createdAt", o."updatedAt", o."deliveredAt"
+      FROM "Order" o
+      WHERE o.status::text <> 'CANCELADO'
+        AND o."paymentStatus"::text <> 'APROVADO'
+      ORDER BY o."createdAt" ASC
+    `;
+
+    if (!orders.length) return [];
+
+    const orderIds = orders.map((o) => o.id);
+    const items = await this._fetchItemsForOrders(orderIds);
+    const users = await this._fetchUsersForOrders(orderIds);
+
+    let mesas = [];
+    let comandas = [];
+    try {
+      mesas = await this._fetchMesasForOrders(orderIds);
+    } catch (_error) {
+      mesas = [];
+    }
+    try {
+      comandas = await this._fetchComandasForOrders(orderIds);
+    } catch (_error) {
+      comandas = [];
+    }
+
+    return orders.map((order) => ({
+      ...order,
+      items: items.filter((item) => item.orderId === order.id),
+      user: users.find((user) => user.id === order.userId) ?? null,
+      mesa: mesas.find((mesa) => mesa.id === order.mesaId) ?? null,
+      comanda:
+        comandas.find((comanda) => comanda.id === order.comandaId) ?? null,
+    }));
+  }
+
   async findForMotoboy({ assignedMotoboyId } = {}) {
     const where = {
       status: "SAIU_PARA_ENTREGA",

@@ -242,6 +242,13 @@ app.get(
   (req, res, next) => orderController.listAll(req, res, next),
 );
 
+app.get(
+  "/api/orders/pending-payments",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.pendingPayments(req, res, next),
+);
+
 // Motoboy: pedidos prontos para entrega
 app.get(
   "/api/motoboy/orders",

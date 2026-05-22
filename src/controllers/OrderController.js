@@ -107,6 +107,18 @@ export class OrderController {
     }
   }
 
+  async pendingPayments(_req, res, next) {
+    try {
+      const orders = await orderService.listPendingPaymentOrders();
+
+      return res.status(200).json({
+        data: orders,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async motoboyOrders(req, res, next) {
     try {
       const orders = await orderService.listMotoboyOrders(req.user);

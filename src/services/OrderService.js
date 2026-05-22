@@ -820,6 +820,10 @@ export class OrderService {
     }
   }
 
+  async listPendingPaymentOrders() {
+    return this.orderRepository.findPendingPayments();
+  }
+
   async listOrderHistory({ clientName, dateFrom, dateTo } = {}) {
     return this.orderRepository.findAllHistory({
       clientName,
@@ -1150,13 +1154,6 @@ export class OrderService {
         );
       }
     } else if (["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(user?.role)) {
-      if (!order.mesaId && !order.comandaId) {
-        throw new AppError(
-          "Somente pedidos vinculados a mesa ou comanda podem ser baixados por atendimento.",
-          409,
-        );
-      }
-
       if (order.status === "CANCELADO") {
         throw new AppError("Pedido cancelado não pode ser pago.", 409);
       }

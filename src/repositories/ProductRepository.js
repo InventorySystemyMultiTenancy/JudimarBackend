@@ -1,15 +1,55 @@
 import { prisma } from "../lib/prisma.js";
 
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const WEEKDAY_BY_SHORT_NAME = {
+  Sun: "SUN",
+  Mon: "MON",
+  Tue: "TUE",
+  Wed: "WED",
+  Thu: "THU",
+  Fri: "FRI",
+  Sat: "SAT",
+};
+
+function getTodayCode() {
+  const shortName = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+  }).format(new Date());
+  return WEEKDAY_BY_SHORT_NAME[shortName] ?? "SUN";
+}
+
+function normalizeAvailableDays(days) {
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.filter((day) => WEEKDAYS.includes(day)))];
+}
+
+function isAvailableToday(product) {
+  const days = product.availableDays ?? [];
+  return days.length === 0 || days.includes(getTodayCode());
+}
+
+function attachMetadata(product, metaMap) {
+  const { stock, stockMinimum, ...rest } = product;
+  const meta = metaMap.get(product.id);
+  return {
+    ...rest,
+    category: meta?.category ?? "Geral",
+    availableDays: meta?.availableDays ?? [],
+  };
+}
+
 // Busca metadados via raw SQL (compatível com qualquer versão do Prisma Client)
 async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category" FROM "Product" WHERE "id" = ANY(${ids})`;
+    await prisma.$queryRaw`SELECT "id", "category", "availableDays" FROM "Product" WHERE "id" = ANY(${ids})`;
   return new Map(
     rows.map((r) => [
       r.id,
       {
         category: r.category ?? "Geral",
+        availableDays: normalizeAvailableDays(r.availableDays),
       },
     ]),
   );
@@ -23,13 +63,9 @@ export class ProductRepository {
       orderBy: [{ isCrust: "asc" }, { name: "asc" }],
     });
     const metaMap = await fetchProductMetadata(products.map((p) => p.id));
-    return products.map((p) => {
-      const { stock, stockMinimum, ...rest } = p;
-      return {
-        ...rest,
-        category: metaMap.get(p.id)?.category ?? "Geral",
-      };
-    });
+    return products
+      .map((p) => attachMetadata(p, metaMap))
+      .filter((product) => isAvailableToday(product));
   }
 
   async findAllForAdmin() {
@@ -38,16 +74,18 @@ export class ProductRepository {
       orderBy: [{ isCrust: "asc" }, { name: "asc" }],
     });
     const metaMap = await fetchProductMetadata(products.map((p) => p.id));
-    return products.map((p) => {
-      const { stock, stockMinimum, ...rest } = p;
-      return {
-        ...rest,
-        category: metaMap.get(p.id)?.category ?? "Geral",
-      };
-    });
+    return products.map((p) => attachMetadata(p, metaMap));
   }
 
-  async create({ name, description, imageUrl, category, isCrust, sizes }) {
+  async create({
+    name,
+    description,
+    imageUrl,
+    category,
+    availableDays,
+    isCrust,
+    sizes,
+  }) {
     // Campos adicionados depois do Prisma Client podem ser gravados via raw SQL.
     const product = await prisma.product.create({
       data: {
@@ -66,21 +104,25 @@ export class ProductRepository {
       include: { sizes: { orderBy: { size: "asc" } } },
     });
     const cat = category ?? "Geral";
+    const days = normalizeAvailableDays(availableDays);
     await prisma.$executeRaw`
       UPDATE "Product"
-      SET "category" = ${cat}
+      SET
+        "category" = ${cat},
+        "availableDays" = ${days}
       WHERE "id" = ${product.id}
     `;
     const { stock, stockMinimum, ...rest } = product;
-    return { ...rest, category: cat };
+    return { ...rest, category: cat, availableDays: days };
   }
 
   async update(
     productId,
-    { name, description, imageUrl, category, isCrust, sizes },
+    { name, description, imageUrl, category, availableDays, isCrust, sizes },
   ) {
     return prisma.$transaction(async (tx) => {
       let resolvedCategory = category;
+      let resolvedAvailableDays = availableDays;
 
       await tx.product.update({
         where: { id: productId },
@@ -92,18 +134,23 @@ export class ProductRepository {
         },
       });
 
-      if (category !== undefined) {
+      if (category !== undefined || availableDays !== undefined) {
         const existingRow = await tx.$queryRaw`
-          SELECT "category"
+          SELECT "category", "availableDays"
           FROM "Product"
           WHERE "id" = ${productId}
         `;
         const current = existingRow?.[0] ?? {};
         resolvedCategory = category ?? current.category ?? "Geral";
+        resolvedAvailableDays =
+          availableDays !== undefined
+            ? normalizeAvailableDays(availableDays)
+            : normalizeAvailableDays(current.availableDays);
         await tx.$executeRaw`
           UPDATE "Product"
           SET
-            "category" = ${resolvedCategory}
+            "category" = ${resolvedCategory},
+            "availableDays" = ${resolvedAvailableDays}
           WHERE "id" = ${productId}
         `;
       }
@@ -128,6 +175,8 @@ export class ProductRepository {
       return {
         ...rest,
         category: resolvedCategory ?? updated?.category ?? "Geral",
+        availableDays:
+          resolvedAvailableDays ?? updated?.availableDays ?? [],
       };
     });
   }
@@ -146,11 +195,7 @@ export class ProductRepository {
     });
     if (!product) return null;
     const metaMap = await fetchProductMetadata([productId]);
-    const { stock, stockMinimum, ...rest } = product;
-    return {
-      ...rest,
-      category: metaMap.get(productId)?.category ?? "Geral",
-    };
+    return attachMetadata(product, metaMap);
   }
 
   async findTopSelling(limit = 6) {
@@ -198,14 +243,11 @@ export class ProductRepository {
     return ids
       .map((id) => productsById.get(id))
       .filter(Boolean)
-      .map((product) => {
-        const { stock, stockMinimum, ...rest } = product;
-        return {
-          ...rest,
-          category: metaMap.get(product.id)?.category ?? "Geral",
-          soldCount: soldCountById.get(product.id) ?? 0,
-        };
-      });
+      .map((product) => ({
+        ...attachMetadata(product, metaMap),
+        soldCount: soldCountById.get(product.id) ?? 0,
+      }))
+      .filter((product) => isAvailableToday(product));
   }
 
   async findSizePrice(productId, size, { isCrust } = {}) {

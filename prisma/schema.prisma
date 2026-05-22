@@ -71,6 +71,7 @@ model Product {
   isCrust     Boolean       @default(false)
   stock       Int           @default(0)
   stockMinimum Int          @default(0)
+  availableDays String[]    @default([])
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

@@ -6,6 +6,16 @@ const sizeSchema = z.object({
   costPrice: z.number().nonnegative("Custo deve ser positivo").optional(),
 });
 
+const availableDaySchema = z.enum([
+  "SUN",
+  "MON",
+  "TUE",
+  "WED",
+  "THU",
+  "FRI",
+  "SAT",
+]);
+
 export const createProductSchema = z.object({
   name: z.string().min(2, "Nome muito curto").max(100),
   description: z.string().max(300).optional(),
@@ -15,6 +25,7 @@ export const createProductSchema = z.object({
     .optional()
     .or(z.literal("")),
   category: z.string().max(50).optional(),
+  availableDays: z.array(availableDaySchema).optional(),
   isCrust: z.boolean().optional(),
   sizes: z.array(sizeSchema).min(1, "Informe ao menos um tamanho com preco"),
 });
@@ -28,6 +39,7 @@ export const updateProductSchema = z.object({
     .optional()
     .or(z.literal("")),
   category: z.string().max(50).optional(),
+  availableDays: z.array(availableDaySchema).optional(),
   isCrust: z.boolean().optional(),
   sizes: z.array(sizeSchema).min(1).optional(),
 });

@@ -34,6 +34,8 @@ async function runMigrations() {
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "hasPriceVariants" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "commercialPrice" DECIMAL(10,2)`,
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "pratoFeitoPrice" DECIMAL(10,2)`,
+    `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "commercialCostPrice" DECIMAL(10,2)`,
+    `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "pratoFeitoCostPrice" DECIMAL(10,2)`,
   ];
   for (const sql of migrations) {
     try {

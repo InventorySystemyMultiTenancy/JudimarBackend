@@ -1,0 +1,3 @@
+ALTER TABLE "Product"
+ADD COLUMN IF NOT EXISTS "commercialCostPrice" DECIMAL(10,2),
+ADD COLUMN IF NOT EXISTS "pratoFeitoCostPrice" DECIMAL(10,2);

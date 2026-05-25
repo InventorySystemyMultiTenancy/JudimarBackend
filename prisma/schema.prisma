@@ -77,6 +77,8 @@ model Product {
   hasPriceVariants Boolean  @default(false)
   commercialPrice Decimal?  @db.Decimal(10, 2)
   pratoFeitoPrice Decimal?  @db.Decimal(10, 2)
+  commercialCostPrice Decimal? @db.Decimal(10, 2)
+  pratoFeitoCostPrice Decimal? @db.Decimal(10, 2)
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

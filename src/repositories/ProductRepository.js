@@ -40,6 +40,8 @@ function attachMetadata(product, metaMap) {
     hasPriceVariants: meta?.hasPriceVariants ?? false,
     commercialPrice: meta?.commercialPrice ?? null,
     pratoFeitoPrice: meta?.pratoFeitoPrice ?? null,
+    commercialCostPrice: meta?.commercialCostPrice ?? null,
+    pratoFeitoCostPrice: meta?.pratoFeitoCostPrice ?? null,
   };
 }
 
@@ -47,7 +49,7 @@ function attachMetadata(product, metaMap) {
 async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice" FROM "Product" WHERE "id" = ANY(${ids})`;
+    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice" FROM "Product" WHERE "id" = ANY(${ids})`;
   return new Map(
     rows.map((r) => [
       r.id,
@@ -60,6 +62,10 @@ async function fetchProductMetadata(ids) {
           r.commercialPrice != null ? Number(r.commercialPrice) : null,
         pratoFeitoPrice:
           r.pratoFeitoPrice != null ? Number(r.pratoFeitoPrice) : null,
+        commercialCostPrice:
+          r.commercialCostPrice != null ? Number(r.commercialCostPrice) : null,
+        pratoFeitoCostPrice:
+          r.pratoFeitoCostPrice != null ? Number(r.pratoFeitoCostPrice) : null,
       },
     ]),
   );
@@ -97,6 +103,8 @@ export class ProductRepository {
     hasPriceVariants,
     commercialPrice,
     pratoFeitoPrice,
+    commercialCostPrice,
+    pratoFeitoCostPrice,
     isCrust,
     sizes,
   }) {
@@ -127,7 +135,9 @@ export class ProductRepository {
         "waiterOnly" = ${Boolean(waiterOnly)},
         "hasPriceVariants" = ${Boolean(hasPriceVariants)},
         "commercialPrice" = ${hasPriceVariants ? commercialPrice : null},
-        "pratoFeitoPrice" = ${hasPriceVariants ? pratoFeitoPrice : null}
+        "pratoFeitoPrice" = ${hasPriceVariants ? pratoFeitoPrice : null},
+        "commercialCostPrice" = ${hasPriceVariants ? commercialCostPrice ?? null : null},
+        "pratoFeitoCostPrice" = ${hasPriceVariants ? pratoFeitoCostPrice ?? null : null}
       WHERE "id" = ${product.id}
     `;
     const { stock, stockMinimum, ...rest } = product;
@@ -139,6 +149,8 @@ export class ProductRepository {
       hasPriceVariants: Boolean(hasPriceVariants),
       commercialPrice: hasPriceVariants ? commercialPrice : null,
       pratoFeitoPrice: hasPriceVariants ? pratoFeitoPrice : null,
+      commercialCostPrice: hasPriceVariants ? commercialCostPrice ?? null : null,
+      pratoFeitoCostPrice: hasPriceVariants ? pratoFeitoCostPrice ?? null : null,
     };
   }
 
@@ -154,6 +166,8 @@ export class ProductRepository {
       hasPriceVariants,
       commercialPrice,
       pratoFeitoPrice,
+      commercialCostPrice,
+      pratoFeitoCostPrice,
       isCrust,
       sizes,
     },
@@ -165,6 +179,8 @@ export class ProductRepository {
       let resolvedHasPriceVariants = hasPriceVariants;
       let resolvedCommercialPrice = commercialPrice;
       let resolvedPratoFeitoPrice = pratoFeitoPrice;
+      let resolvedCommercialCostPrice = commercialCostPrice;
+      let resolvedPratoFeitoCostPrice = pratoFeitoCostPrice;
 
       await tx.product.update({
         where: { id: productId },
@@ -182,10 +198,12 @@ export class ProductRepository {
         waiterOnly !== undefined ||
         hasPriceVariants !== undefined ||
         commercialPrice !== undefined ||
-        pratoFeitoPrice !== undefined
+        pratoFeitoPrice !== undefined ||
+        commercialCostPrice !== undefined ||
+        pratoFeitoCostPrice !== undefined
       ) {
         const existingRow = await tx.$queryRaw`
-          SELECT "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice"
+          SELECT "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice"
           FROM "Product"
           WHERE "id" = ${productId}
         `;
@@ -213,6 +231,18 @@ export class ProductRepository {
             : current.pratoFeitoPrice != null
               ? Number(current.pratoFeitoPrice)
               : null;
+        resolvedCommercialCostPrice =
+          commercialCostPrice !== undefined
+            ? commercialCostPrice
+            : current.commercialCostPrice != null
+              ? Number(current.commercialCostPrice)
+              : null;
+        resolvedPratoFeitoCostPrice =
+          pratoFeitoCostPrice !== undefined
+            ? pratoFeitoCostPrice
+            : current.pratoFeitoCostPrice != null
+              ? Number(current.pratoFeitoCostPrice)
+              : null;
         await tx.$executeRaw`
           UPDATE "Product"
           SET
@@ -221,7 +251,9 @@ export class ProductRepository {
             "waiterOnly" = ${Boolean(resolvedWaiterOnly)},
             "hasPriceVariants" = ${Boolean(resolvedHasPriceVariants)},
             "commercialPrice" = ${resolvedHasPriceVariants ? resolvedCommercialPrice : null},
-            "pratoFeitoPrice" = ${resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null}
+            "pratoFeitoPrice" = ${resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null},
+            "commercialCostPrice" = ${resolvedHasPriceVariants ? resolvedCommercialCostPrice ?? null : null},
+            "pratoFeitoCostPrice" = ${resolvedHasPriceVariants ? resolvedPratoFeitoCostPrice ?? null : null}
           WHERE "id" = ${productId}
         `;
       }
@@ -255,6 +287,10 @@ export class ProductRepository {
           resolvedHasPriceVariants ? resolvedCommercialPrice : null,
         pratoFeitoPrice:
           resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null,
+        commercialCostPrice:
+          resolvedHasPriceVariants ? resolvedCommercialCostPrice ?? null : null,
+        pratoFeitoCostPrice:
+          resolvedHasPriceVariants ? resolvedPratoFeitoCostPrice ?? null : null,
       };
     });
   }

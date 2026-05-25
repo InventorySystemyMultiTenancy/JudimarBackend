@@ -960,14 +960,21 @@ export class OrderRepository {
 
     const orderIds = orders.map((o) => o.id);
 
-    // Busca itens com costPrice do tamanho correspondente
+    // Busca itens com custo correto, incluindo produtos com Comercial/Prato Feito.
     const ph = orderIds.map((_, i) => `$${i + 1}`).join(", ");
     const items = await prisma.$queryRawUnsafe(
       `SELECT oi."orderId", oi.quantity,
               oi."unitPrice", oi."totalPrice",
               oi."productId",
+              oi."priceVariant",
               p.name AS "productName",
-              COALESCE(ps."costPrice", 0) AS "costPrice"
+              CASE
+                WHEN p."hasPriceVariants" = true AND oi."priceVariant" = 'PRATO_FEITO'
+                  THEN COALESCE(p."pratoFeitoCostPrice", ps."costPrice", 0)
+                WHEN p."hasPriceVariants" = true
+                  THEN COALESCE(p."commercialCostPrice", ps."costPrice", 0)
+                ELSE COALESCE(ps."costPrice", 0)
+              END AS "costPrice"
        FROM "OrderItem" oi
        LEFT JOIN "Product" p ON p.id = oi."productId"
        LEFT JOIN "ProductSize" ps ON ps."productId" = oi."productId"

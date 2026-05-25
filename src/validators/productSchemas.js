@@ -48,6 +48,8 @@ export const createProductSchema = z.object({
   hasPriceVariants: z.boolean().optional(),
   commercialPrice: z.number().positive("Preco comercial deve ser positivo").optional(),
   pratoFeitoPrice: z.number().positive("Preco do prato feito deve ser positivo").optional(),
+  commercialCostPrice: z.number().nonnegative("Custo comercial deve ser positivo").nullable().optional(),
+  pratoFeitoCostPrice: z.number().nonnegative("Custo do prato feito deve ser positivo").nullable().optional(),
   isCrust: z.boolean().optional(),
   sizes: z.array(sizeSchema).min(1, "Informe ao menos um tamanho com preco"),
 }).superRefine(validatePriceVariants);
@@ -66,6 +68,8 @@ export const updateProductSchema = z.object({
   hasPriceVariants: z.boolean().optional(),
   commercialPrice: z.number().positive("Preco comercial deve ser positivo").nullable().optional(),
   pratoFeitoPrice: z.number().positive("Preco do prato feito deve ser positivo").nullable().optional(),
+  commercialCostPrice: z.number().nonnegative("Custo comercial deve ser positivo").nullable().optional(),
+  pratoFeitoCostPrice: z.number().nonnegative("Custo do prato feito deve ser positivo").nullable().optional(),
   isCrust: z.boolean().optional(),
   sizes: z.array(sizeSchema).min(1).optional(),
 }).superRefine(validatePriceVariants);

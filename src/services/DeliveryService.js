@@ -8,6 +8,7 @@ const PIZZARIA_LON = -46.5043;
 
 const TAXA_BASE = 5.0; // R$ 5,00 fixo (saída do motoboy)
 const TAXA_POR_KM = 2.0; // R$ 2,00 por km rodado
+const RAIO_FRETE_GRATIS_KM = 5;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const formatBRL = (valor) =>
@@ -123,7 +124,10 @@ export class DeliveryService {
 
     // ── Etapa 3: Cálculo do Frete ────────────────────────────────────────────
     const distanciaKm = Math.round((distanceMeters / 1000) * 10) / 10;
-    const valorFreteNumerico = TAXA_BASE + distanciaKm * TAXA_POR_KM;
+    const valorFreteNumerico =
+      distanciaKm <= RAIO_FRETE_GRATIS_KM
+        ? 0
+        : TAXA_BASE + distanciaKm * TAXA_POR_KM;
     const tempoEstimado = Math.ceil(durationSeconds / 60);
 
     return {
@@ -133,6 +137,7 @@ export class DeliveryService {
       distanciaKm,
       valorFrete: formatBRL(valorFreteNumerico),
       valorFreteNumerico: Math.round(valorFreteNumerico * 100) / 100,
+      freteGratisPorDistancia: distanciaKm <= RAIO_FRETE_GRATIS_KM,
       tempoEstimado,
     };
   }

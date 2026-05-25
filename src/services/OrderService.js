@@ -122,6 +122,7 @@ export class OrderService {
               addons: item.addons,
               removedIngredients: item.removedIngredients,
               notes: item.notes ?? null,
+              priceVariant: item.priceVariant ?? null,
             })),
           },
           payment: {
@@ -1254,7 +1255,21 @@ export class OrderService {
       throw new AppError("Produto invalido ou inativo.", 422);
     }
 
-    const basePrice = product.sizes?.[0]?.price;
+    const priceConfigRows = await tx.$queryRaw`
+      SELECT "hasPriceVariants", "commercialPrice", "pratoFeitoPrice"
+      FROM "Product"
+      WHERE id = ${item.productId}
+      LIMIT 1
+    `;
+    const priceConfig = priceConfigRows?.[0] ?? {};
+    const hasPriceVariants = Boolean(priceConfig.hasPriceVariants);
+    const requestedPriceVariant =
+      item.priceVariant === "PRATO_FEITO" ? "PRATO_FEITO" : "COMERCIAL";
+    const basePrice = hasPriceVariants
+      ? requestedPriceVariant === "PRATO_FEITO"
+        ? priceConfig.pratoFeitoPrice
+        : priceConfig.commercialPrice
+      : product.sizes?.[0]?.price;
     if (basePrice == null) {
       throw new AppError("Produto sem preco configurado.", 422);
     }
@@ -1300,6 +1315,7 @@ export class OrderService {
       addons,
       removedIngredients: item.removedIngredients ?? null,
       notes: item.notes ?? null,
+      priceVariant: hasPriceVariants ? requestedPriceVariant : null,
     };
   }
 

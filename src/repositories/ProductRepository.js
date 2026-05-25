@@ -37,6 +37,9 @@ function attachMetadata(product, metaMap) {
     category: meta?.category ?? "Geral",
     availableDays: meta?.availableDays ?? [],
     waiterOnly: meta?.waiterOnly ?? false,
+    hasPriceVariants: meta?.hasPriceVariants ?? false,
+    commercialPrice: meta?.commercialPrice ?? null,
+    pratoFeitoPrice: meta?.pratoFeitoPrice ?? null,
   };
 }
 
@@ -44,7 +47,7 @@ function attachMetadata(product, metaMap) {
 async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly" FROM "Product" WHERE "id" = ANY(${ids})`;
+    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice" FROM "Product" WHERE "id" = ANY(${ids})`;
   return new Map(
     rows.map((r) => [
       r.id,
@@ -52,6 +55,11 @@ async function fetchProductMetadata(ids) {
         category: r.category ?? "Geral",
         availableDays: normalizeAvailableDays(r.availableDays),
         waiterOnly: Boolean(r.waiterOnly),
+        hasPriceVariants: Boolean(r.hasPriceVariants),
+        commercialPrice:
+          r.commercialPrice != null ? Number(r.commercialPrice) : null,
+        pratoFeitoPrice:
+          r.pratoFeitoPrice != null ? Number(r.pratoFeitoPrice) : null,
       },
     ]),
   );
@@ -86,6 +94,9 @@ export class ProductRepository {
     category,
     availableDays,
     waiterOnly,
+    hasPriceVariants,
+    commercialPrice,
+    pratoFeitoPrice,
     isCrust,
     sizes,
   }) {
@@ -113,7 +124,10 @@ export class ProductRepository {
       SET
         "category" = ${cat},
         "availableDays" = ${days},
-        "waiterOnly" = ${Boolean(waiterOnly)}
+        "waiterOnly" = ${Boolean(waiterOnly)},
+        "hasPriceVariants" = ${Boolean(hasPriceVariants)},
+        "commercialPrice" = ${hasPriceVariants ? commercialPrice : null},
+        "pratoFeitoPrice" = ${hasPriceVariants ? pratoFeitoPrice : null}
       WHERE "id" = ${product.id}
     `;
     const { stock, stockMinimum, ...rest } = product;
@@ -122,6 +136,9 @@ export class ProductRepository {
       category: cat,
       availableDays: days,
       waiterOnly: Boolean(waiterOnly),
+      hasPriceVariants: Boolean(hasPriceVariants),
+      commercialPrice: hasPriceVariants ? commercialPrice : null,
+      pratoFeitoPrice: hasPriceVariants ? pratoFeitoPrice : null,
     };
   }
 
@@ -134,6 +151,9 @@ export class ProductRepository {
       category,
       availableDays,
       waiterOnly,
+      hasPriceVariants,
+      commercialPrice,
+      pratoFeitoPrice,
       isCrust,
       sizes,
     },
@@ -142,6 +162,9 @@ export class ProductRepository {
       let resolvedCategory = category;
       let resolvedAvailableDays = availableDays;
       let resolvedWaiterOnly = waiterOnly;
+      let resolvedHasPriceVariants = hasPriceVariants;
+      let resolvedCommercialPrice = commercialPrice;
+      let resolvedPratoFeitoPrice = pratoFeitoPrice;
 
       await tx.product.update({
         where: { id: productId },
@@ -156,10 +179,13 @@ export class ProductRepository {
       if (
         category !== undefined ||
         availableDays !== undefined ||
-        waiterOnly !== undefined
+        waiterOnly !== undefined ||
+        hasPriceVariants !== undefined ||
+        commercialPrice !== undefined ||
+        pratoFeitoPrice !== undefined
       ) {
         const existingRow = await tx.$queryRaw`
-          SELECT "category", "availableDays", "waiterOnly"
+          SELECT "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice"
           FROM "Product"
           WHERE "id" = ${productId}
         `;
@@ -171,12 +197,31 @@ export class ProductRepository {
             : normalizeAvailableDays(current.availableDays);
         resolvedWaiterOnly =
           waiterOnly !== undefined ? Boolean(waiterOnly) : current.waiterOnly;
+        resolvedHasPriceVariants =
+          hasPriceVariants !== undefined
+            ? Boolean(hasPriceVariants)
+            : Boolean(current.hasPriceVariants);
+        resolvedCommercialPrice =
+          commercialPrice !== undefined
+            ? commercialPrice
+            : current.commercialPrice != null
+              ? Number(current.commercialPrice)
+              : null;
+        resolvedPratoFeitoPrice =
+          pratoFeitoPrice !== undefined
+            ? pratoFeitoPrice
+            : current.pratoFeitoPrice != null
+              ? Number(current.pratoFeitoPrice)
+              : null;
         await tx.$executeRaw`
           UPDATE "Product"
           SET
             "category" = ${resolvedCategory},
             "availableDays" = ${resolvedAvailableDays},
-            "waiterOnly" = ${Boolean(resolvedWaiterOnly)}
+            "waiterOnly" = ${Boolean(resolvedWaiterOnly)},
+            "hasPriceVariants" = ${Boolean(resolvedHasPriceVariants)},
+            "commercialPrice" = ${resolvedHasPriceVariants ? resolvedCommercialPrice : null},
+            "pratoFeitoPrice" = ${resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null}
           WHERE "id" = ${productId}
         `;
       }
@@ -204,6 +249,12 @@ export class ProductRepository {
         availableDays:
           resolvedAvailableDays ?? updated?.availableDays ?? [],
         waiterOnly: resolvedWaiterOnly ?? updated?.waiterOnly ?? false,
+        hasPriceVariants:
+          resolvedHasPriceVariants ?? updated?.hasPriceVariants ?? false,
+        commercialPrice:
+          resolvedHasPriceVariants ? resolvedCommercialPrice : null,
+        pratoFeitoPrice:
+          resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null,
       };
     });
   }

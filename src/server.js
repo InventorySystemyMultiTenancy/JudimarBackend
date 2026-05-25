@@ -30,6 +30,10 @@ async function runMigrations() {
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "assignedMotoboyId" TEXT`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "deliveryCode" TEXT`,
     `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "notes" TEXT`,
+    `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "priceVariant" TEXT`,
+    `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "hasPriceVariants" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "commercialPrice" DECIMAL(10,2)`,
+    `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "pratoFeitoPrice" DECIMAL(10,2)`,
   ];
   for (const sql of migrations) {
     try {

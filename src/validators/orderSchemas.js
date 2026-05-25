@@ -11,6 +11,7 @@ const itemSchema = z
       .default([]),
     removedIngredients: z.string().trim().min(1).max(255).optional(),
     notes: z.string().max(500).optional(),
+    priceVariant: z.enum(["COMERCIAL", "PRATO_FEITO"]).optional(),
   })
   .superRefine((item, ctx) => {
     if (!item.addonIds?.length) {

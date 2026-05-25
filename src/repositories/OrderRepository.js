@@ -130,6 +130,7 @@ export class OrderRepository {
              oi.addons,
              oi."removed_ingredients" AS "removedIngredients",
              oi.notes,
+             oi."priceVariant",
              p.name AS "productName",
              p."imageUrl" AS "productImageUrl",
              p."waiterOnly" AS "productWaiterOnly"
@@ -172,6 +173,7 @@ export class OrderRepository {
               "removed_ingredients",
             ]),
             notes: this._pick(row, ["notes"]),
+            priceVariant: this._pick(row, ["priceVariant", "price_variant"]),
             productName: null,
             productImageUrl: null,
             productWaiterOnly: false,

@@ -416,6 +416,31 @@ export class OrderRepository {
     return this.findById(orderId);
   }
 
+  async markWaiterItemsDelivered(orderId, { itemIds = [] } = {}) {
+    const params = [orderId];
+    let itemFilter = "";
+
+    if (itemIds.length) {
+      const placeholders = itemIds.map((_, index) => `$${index + 2}`).join(", ");
+      itemFilter = ` AND oi.id IN (${placeholders})`;
+      params.push(...itemIds);
+    }
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "OrderItem" oi
+       SET "waiterDeliveredAt" = NOW()
+       FROM "Product" p
+       WHERE oi."productId" = p.id
+         AND oi."orderId" = $1
+         AND p."waiterOnly" = true
+         AND oi."waiterDeliveredAt" IS NULL
+         ${itemFilter}`,
+      ...params,
+    );
+
+    return this.findById(orderId);
+  }
+
   async updatePaymentStatus(orderId, paymentStatus, paymentMethod) {
     return prisma.order.update({
       where: { id: orderId },

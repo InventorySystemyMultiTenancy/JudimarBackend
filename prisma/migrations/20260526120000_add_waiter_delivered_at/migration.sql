@@ -1,0 +1,2 @@
+ALTER TABLE "OrderItem"
+ADD COLUMN IF NOT EXISTS "waiterDeliveredAt" TIMESTAMP(3);

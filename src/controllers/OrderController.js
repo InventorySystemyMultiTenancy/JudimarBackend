@@ -71,6 +71,29 @@ export class OrderController {
     }
   }
 
+  async markWaiterItemsDelivered(req, res, next) {
+    try {
+      const rawItemIds = Array.isArray(req.body?.itemIds)
+        ? req.body.itemIds
+        : [];
+      const itemIds = rawItemIds
+        .map((itemId) => String(itemId ?? "").trim())
+        .filter(Boolean);
+
+      const updatedOrder = await orderService.markWaiterItemsDelivered(
+        req.params.orderId,
+        { itemIds },
+      );
+
+      return res.status(200).json({
+        message: "Itens do garcom marcados como entregues.",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async getById(req, res, next) {
     try {
       const order = await orderService.getOrderById(req.params.orderId);

@@ -313,6 +313,50 @@ export class OrderService {
     return updatedOrder;
   }
 
+  async markWaiterItemsDelivered(orderId, { itemIds = [] } = {}) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (["ENTREGUE", "CANCELADO"].includes(order.status)) {
+      throw new AppError("Pedido ja foi finalizado.", 409);
+    }
+
+    const waiterItems = (order.items ?? []).filter(
+      (item) => item.product?.waiterOnly,
+    );
+
+    if (!waiterItems.length) {
+      throw new AppError("Pedido nao possui itens do garcom.", 422);
+    }
+
+    const validWaiterItemIds = new Set(waiterItems.map((item) => item.id));
+    const normalizedItemIds = [...new Set(itemIds.filter(Boolean))];
+
+    if (
+      normalizedItemIds.length &&
+      normalizedItemIds.some((itemId) => !validWaiterItemIds.has(itemId))
+    ) {
+      throw new AppError("Item de bebida invalido para este pedido.", 422);
+    }
+
+    const updatedOrder = await this.orderRepository.markWaiterItemsDelivered(
+      orderId,
+      { itemIds: normalizedItemIds },
+    );
+
+    emitOrderStatusUpdated({
+      orderId: updatedOrder.id,
+      userId: updatedOrder.userId,
+      status: updatedOrder.status,
+      waiterItemsDelivered: true,
+    });
+
+    return updatedOrder;
+  }
+
   async handlePaymentWebhook(payload) {
     // Formatos suportados:
     // 1. Nova API /v1/orders (MP Point):  { type: "order", action: "order.processed", data: { id: "ORD...", external_reference: "...", status: "processed" } }

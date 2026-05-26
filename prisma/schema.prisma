@@ -177,6 +177,7 @@ model OrderItem {
   removedIngredients String?
   notes              String?
   priceVariant       String?
+  waiterDeliveredAt  DateTime?
 
   order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product            Product  @relation(fields: [productId], references: [id], onDelete: Restrict)

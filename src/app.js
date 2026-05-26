@@ -364,6 +364,13 @@ app.post(
 );
 
 app.patch(
+  "/api/orders/:orderId/waiter-items/delivered",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.markWaiterItemsDelivered(req, res, next),
+);
+
+app.patch(
   "/api/orders/:orderId/mark-paid",
   authenticateToken,
   authorizeRoles("MOTOBOY", "ADMIN", "FUNCIONARIO", "ATENDENTE"),

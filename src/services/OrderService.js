@@ -343,14 +343,29 @@ export class OrderService {
       throw new AppError("Item de bebida invalido para este pedido.", 422);
     }
 
-    const updatedOrder = await this.orderRepository.markWaiterItemsDelivered(
+    let updatedOrder = await this.orderRepository.markWaiterItemsDelivered(
       orderId,
       { itemIds: normalizedItemIds },
     );
 
+    const orderItems = updatedOrder.items ?? [];
+    const onlyWaiterItems =
+      orderItems.length > 0 && orderItems.every((item) => item.product?.waiterOnly);
+    const allWaiterItemsDelivered =
+      onlyWaiterItems && orderItems.every((item) => item.waiterDeliveredAt);
+
+    if (allWaiterItemsDelivered) {
+      updatedOrder = await this.orderRepository.updateStatus(
+        orderId,
+        "ENTREGUE",
+        new Date(),
+      );
+    }
+
     emitOrderStatusUpdated({
       orderId: updatedOrder.id,
       userId: updatedOrder.userId,
+      previousStatus: order.status,
       status: updatedOrder.status,
       waiterItemsDelivered: true,
     });

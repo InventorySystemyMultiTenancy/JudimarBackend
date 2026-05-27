@@ -272,7 +272,7 @@ export class OrderService {
     if (
       order.status === "PREPARANDO" &&
       nextStatus === "SAIU_PARA_ENTREGA" &&
-      (order.mesaId || order.isPickup)
+      (order.mesaId || order.comandaId || order.isPickup)
     ) {
       allowedTransitions.push("SAIU_PARA_ENTREGA");
     }
@@ -287,6 +287,7 @@ export class OrderService {
     if (
       nextStatus === "SAIU_PARA_ENTREGA" &&
       !order.mesaId &&
+      !order.comandaId &&
       !order.isPickup &&
       !order.assignedMotoboyId
     ) {
@@ -987,11 +988,18 @@ export class OrderService {
 
     const orderTypeMap = new Map([
       ["MESA", { type: "MESA", label: "Mesa", orders: 0, revenue: 0 }],
+      ["COMANDA", { type: "COMANDA", label: "Comanda", orders: 0, revenue: 0 }],
       ["RETIRADA", { type: "RETIRADA", label: "Retirada", orders: 0, revenue: 0 }],
       ["ENTREGA", { type: "ENTREGA", label: "Entrega", orders: 0, revenue: 0 }],
     ]);
     for (const order of paidOrders) {
-      const type = order.mesaId ? "MESA" : order.isPickup ? "RETIRADA" : "ENTREGA";
+      const type = order.mesaId
+        ? "MESA"
+        : order.comandaId
+          ? "COMANDA"
+          : order.isPickup
+            ? "RETIRADA"
+            : "ENTREGA";
       const current = orderTypeMap.get(type);
       current.orders += 1;
       current.revenue += Number(order.total);

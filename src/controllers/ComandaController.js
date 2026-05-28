@@ -12,7 +12,7 @@ export class ComandaController {
   async create(req, res, next) {
     try {
       const data = createComandaSchema.parse(req.body);
-      const comanda = await comandaService.create(data);
+      const comanda = await comandaService.create(data, req.user);
       return res.status(201).json({ message: "Comanda criada.", data: comanda });
     } catch (error) {
       return this.#handleError(error, next);

@@ -3,6 +3,7 @@ import http from "http";
 import { app } from "./app.js";
 import { initializeSocketServer } from "./realtime/socketServer.js";
 import { prisma } from "./lib/prisma.js";
+import { ComandaService } from "./services/ComandaService.js";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ process.on("uncaughtException", (err) => {
 
 const port = Number(process.env.PORT || 3000);
 const server = http.createServer(app);
+const comandaService = new ComandaService();
 
 initializeSocketServer(server);
 
@@ -25,6 +27,9 @@ async function runMigrations() {
     `CREATE TABLE IF NOT EXISTS "Comanda" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "number" INTEGER NOT NULL, "accessToken" TEXT NOT NULL, "isActive" BOOLEAN NOT NULL DEFAULT true, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Comanda_pkey" PRIMARY KEY ("id"))`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "Comanda_number_key" ON "Comanda"("number")`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "Comanda_accessToken_key" ON "Comanda"("accessToken")`,
+    `ALTER TABLE "Comanda" ADD COLUMN IF NOT EXISTS "isTemporary" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "Comanda" ADD COLUMN IF NOT EXISTS "createdByRole" TEXT`,
+    `ALTER TABLE "Comanda" ADD COLUMN IF NOT EXISTS "createdByUserId" TEXT`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "comandaId" TEXT`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "isPickup" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "assignedMotoboyId" TEXT`,
@@ -48,7 +53,55 @@ async function runMigrations() {
   console.log("[migration] colunas verificadas/criadas com sucesso");
 }
 
-runMigrations().then(() => {
+function getSaoPauloDayStartUtc(date = new Date()) {
+  const saoPauloOffsetMs = 3 * 60 * 60 * 1000;
+  const saoPauloDate = new Date(date.getTime() - saoPauloOffsetMs);
+  return new Date(
+    Date.UTC(
+      saoPauloDate.getUTCFullYear(),
+      saoPauloDate.getUTCMonth(),
+      saoPauloDate.getUTCDate(),
+      3,
+      0,
+      0,
+      0,
+    ),
+  );
+}
+
+function msUntilNextSaoPauloMidnight() {
+  const todayStart = getSaoPauloDayStartUtc();
+  const nextStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+  return Math.max(1000, nextStart.getTime() - Date.now());
+}
+
+async function cleanupTemporaryComandas() {
+  const cutoff = getSaoPauloDayStartUtc();
+  try {
+    const result = await comandaService.cleanupTemporaryCreatedBefore(cutoff);
+    if (result.deletedCount > 0) {
+      console.log(
+        `[comandas] ${result.deletedCount} comandas temporarias removidas`,
+      );
+    }
+  } catch (err) {
+    console.error("[comandas] falha ao limpar comandas temporarias:", err);
+  }
+}
+
+function scheduleTemporaryComandaCleanup() {
+  const timeout = setTimeout(async () => {
+    await cleanupTemporaryComandas();
+    scheduleTemporaryComandaCleanup();
+  }, msUntilNextSaoPauloMidnight());
+
+  if (typeof timeout.unref === "function") timeout.unref();
+}
+
+runMigrations().then(async () => {
+  await cleanupTemporaryComandas();
+  scheduleTemporaryComandaCleanup();
+
   server.listen(port, () => {
     console.log(`API Pizzaria China rodando na porta ${port}`);
   });

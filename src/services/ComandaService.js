@@ -8,12 +8,18 @@ export class ComandaService {
     this.comandaRepository = comandaRepository;
   }
 
-  async create({ name, number, isActive }) {
+  async create({ name, number, isActive }, user = null) {
+    const createdByRole = user?.role ?? null;
+    const isTemporary = createdByRole === "ATENDENTE";
+
     try {
       return await this.comandaRepository.create({
         name,
         number,
         ...(isActive !== undefined ? { isActive } : {}),
+        isTemporary,
+        createdByRole,
+        createdByUserId: user?.id ?? null,
       });
     } catch (err) {
       if (
@@ -55,6 +61,10 @@ export class ComandaService {
     const comanda = await this.comandaRepository.findById(id);
     if (!comanda) throw new AppError("Comanda nao encontrada.", 404);
     return this.comandaRepository.delete(id);
+  }
+
+  async cleanupTemporaryCreatedBefore(cutoff) {
+    return this.comandaRepository.cleanupTemporaryCreatedBefore(cutoff);
   }
 
   async regenerateToken(id) {

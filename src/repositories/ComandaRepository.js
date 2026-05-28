@@ -60,7 +60,41 @@ export class ComandaRepository {
   }
 
   async delete(id) {
-    return prisma.comanda.delete({ where: { id } });
+    return prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({
+        where: { comandaId: id },
+        data: { comandaId: null },
+      });
+
+      return tx.comanda.delete({ where: { id } });
+    });
+  }
+
+  async cleanupTemporaryCreatedBefore(cutoff) {
+    const temporaryComandas = await prisma.comanda.findMany({
+      where: {
+        isTemporary: true,
+        createdByRole: "ATENDENTE",
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true },
+    });
+
+    const ids = temporaryComandas.map((comanda) => comanda.id);
+    if (!ids.length) return { deletedCount: 0 };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({
+        where: { comandaId: { in: ids } },
+        data: { comandaId: null },
+      });
+
+      await tx.comanda.deleteMany({
+        where: { id: { in: ids } },
+      });
+    });
+
+    return { deletedCount: ids.length };
   }
 
   async findAllOpenTotals() {

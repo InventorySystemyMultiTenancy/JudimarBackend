@@ -522,7 +522,7 @@ app.get(
 app.post(
   "/api/comandas",
   authenticateToken,
-  authorizeRoles("ADMIN"),
+  authorizeRoles("ADMIN", "ATENDENTE"),
   (req, res, next) => comandaController.create(req, res, next),
 );
 app.put(

@@ -422,13 +422,6 @@ export class OrderService {
       paymentStatus: refreshedOrder.paymentStatus,
       amount: Number(refreshedOrder.total ?? 0),
     });
-    emitOrderStatusUpdated({
-      orderId: refreshedOrder.id,
-      userId: refreshedOrder.userId,
-      previousStatus: order.status,
-      status: refreshedOrder.status,
-      itemChanged: true,
-    });
 
     return refreshedOrder;
   }

@@ -315,7 +315,7 @@ app.get(
 app.post(
   "/api/orders",
   authenticateToken,
-  authorizeRoles("CLIENTE", "ADMIN"),
+  authorizeRoles("CLIENTE", "ADMIN", "VIAGEM"),
   (req, res, next) => orderController.create(req, res, next),
 );
 
@@ -352,7 +352,7 @@ app.patch(
 app.patch(
   "/api/orders/:orderId/total",
   authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE", "VIAGEM"),
   (req, res, next) => orderController.updateTotal(req, res, next),
 );
 

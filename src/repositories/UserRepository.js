@@ -60,6 +60,7 @@ export class UserRepository {
       "ADMIN",
       "FUNCIONARIO",
       "ATENDENTE",
+      "VIAGEM",
       "COZINHA",
       "MOTOBOY",
       "CLIENTE",

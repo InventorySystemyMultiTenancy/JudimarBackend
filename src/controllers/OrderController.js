@@ -178,6 +178,22 @@ export class OrderController {
     }
   }
 
+  async updateTotal(req, res, next) {
+    try {
+      const updatedOrder = await orderService.updateOrderTotal(
+        req.params.orderId,
+        req.body?.total,
+      );
+
+      return res.status(200).json({
+        message: "Valor do pedido atualizado.",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async analytics(req, res, next) {
     try {
       const { from, to } = req.query;

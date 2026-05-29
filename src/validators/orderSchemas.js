@@ -36,6 +36,7 @@ export const createOrderSchema = z.object({
   deliveryFee: z.number().nonnegative().optional(),
   deliveryLat: z.number().optional(),
   deliveryLon: z.number().optional(),
+  clientRequestId: z.string().trim().min(8).max(120).optional(),
   items: z.array(itemSchema).min(1).max(30),
 });
 

@@ -57,6 +57,7 @@ export class OrderService {
     deliveryLat,
     deliveryLon,
     isPickup,
+    clientRequestId,
   }) {
     if (!userId && !mesaId && !comandaId) {
       throw new AppError(
@@ -71,6 +72,28 @@ export class OrderService {
 
     const order = await prisma.$transaction(
       async (tx) => {
+        if (clientRequestId) {
+          const existingOrder = await tx.order.findUnique({
+            where: { idempotencyKey: clientRequestId },
+            include: {
+              items: true,
+              payment: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          });
+
+          if (existingOrder) {
+            return { ...existingOrder, __idempotentReplay: true };
+          }
+        }
+
         const normalizedItems = [];
 
         for (const item of items) {
@@ -108,6 +131,7 @@ export class OrderService {
                 deliveryCode: String(Math.floor(1000 + Math.random() * 9000)),
               }),
           ...(paymentMethod != null ? { paymentMethod } : {}),
+          ...(clientRequestId ? { idempotencyKey: clientRequestId } : {}),
           ...(deliveryFee != null
             ? { deliveryFee: new Prisma.Decimal(deliveryFee) }
             : {}),
@@ -147,6 +171,28 @@ export class OrderService {
             },
           });
         } catch (error) {
+          if (clientRequestId && this.#isUniqueConstraintError(error)) {
+            const existingOrder = await tx.order.findUnique({
+              where: { idempotencyKey: clientRequestId },
+              include: {
+                items: true,
+                payment: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                  },
+                },
+              },
+            });
+
+            if (existingOrder) {
+              return { ...existingOrder, __idempotentReplay: true };
+            }
+          }
+
           if (!this.#isMissingColumnError(error)) {
             throw error;
           }
@@ -213,16 +259,20 @@ export class OrderService {
       { timeout: 30000 },
     );
 
-    emitOrderCreated({
-      orderId: order.id,
-      userId: order.userId,
-      mesaId: order.mesaId,
-      comandaId: order.comandaId,
-      status: order.status ?? "PREPARANDO",
-      total: Number(order.total ?? 0),
-    });
+    const { __idempotentReplay, ...orderData } = order;
 
-    return order;
+    if (!__idempotentReplay) {
+      emitOrderCreated({
+        orderId: orderData.id,
+        userId: orderData.userId,
+        mesaId: orderData.mesaId,
+        comandaId: orderData.comandaId,
+        status: orderData.status ?? "PREPARANDO",
+        total: Number(orderData.total ?? 0),
+      });
+    }
+
+    return orderData;
   }
 
   async cancelOrder(orderId) {
@@ -251,6 +301,40 @@ export class OrderService {
       previousStatus: order.status,
       status: "CANCELADO",
       paymentWasPending: order.paymentStatus === "PENDENTE",
+    });
+
+    return updatedOrder;
+  }
+
+  async updateOrderTotal(orderId, total) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (order.status === "CANCELADO") {
+      throw new AppError("Pedido cancelado nao pode ser alterado.", 409);
+    }
+
+    if (order.paymentStatus === "APROVADO") {
+      throw new AppError("Pedido pago nao pode ter valor alterado.", 409);
+    }
+
+    const parsedTotal = Number(total);
+    if (!Number.isFinite(parsedTotal) || parsedTotal < 0) {
+      throw new AppError("Valor invalido.", 422);
+    }
+
+    const updatedOrder = await this.orderRepository.updateTotal(
+      orderId,
+      parsedTotal,
+    );
+
+    emitPaymentUpdated({
+      orderId: updatedOrder.id,
+      paymentStatus: updatedOrder.paymentStatus,
+      amount: Number(updatedOrder.total ?? 0),
     });
 
     return updatedOrder;
@@ -1268,6 +1352,10 @@ export class OrderService {
       dbCode === "42703" ||
       message.includes("does not exist")
     );
+  }
+
+  #isUniqueConstraintError(error) {
+    return String(error?.code ?? "").toUpperCase() === "P2002";
   }
 
   async #getTableColumns(tx, tableName) {

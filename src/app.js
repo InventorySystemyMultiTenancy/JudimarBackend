@@ -345,8 +345,15 @@ app.get(
 app.patch(
   "/api/orders/:orderId/cancel",
   authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
   (req, res, next) => orderController.cancel(req, res, next),
+);
+
+app.patch(
+  "/api/orders/:orderId/total",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.updateTotal(req, res, next),
 );
 
 app.patch(

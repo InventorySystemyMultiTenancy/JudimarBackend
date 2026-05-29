@@ -451,6 +451,26 @@ export class OrderRepository {
     });
   }
 
+  async updateTotal(orderId, total) {
+    const decimalTotal = Number(total).toFixed(2);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "Order"
+        SET total = ${decimalTotal}::decimal, "updatedAt" = NOW()
+        WHERE id = ${orderId}
+      `;
+
+      await tx.$executeRaw`
+        UPDATE "Payment"
+        SET amount = ${decimalTotal}::decimal, "updatedAt" = NOW()
+        WHERE "orderId" = ${orderId}
+      `;
+    });
+
+    return this.findById(orderId);
+  }
+
   async saveTerminalIntentId(orderId, intentId) {
     await prisma.$executeRaw`
       UPDATE "Order" SET "terminalIntentId" = ${intentId}, "updatedAt" = NOW()

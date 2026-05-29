@@ -31,6 +31,8 @@ async function runMigrations() {
     `ALTER TABLE "Comanda" ADD COLUMN IF NOT EXISTS "createdByRole" TEXT`,
     `ALTER TABLE "Comanda" ADD COLUMN IF NOT EXISTS "createdByUserId" TEXT`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "comandaId" TEXT`,
+    `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "idempotencyKey" TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Order_idempotencyKey_key" ON "Order"("idempotencyKey")`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "isPickup" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "assignedMotoboyId" TEXT`,
     `ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "deliveryCode" TEXT`,

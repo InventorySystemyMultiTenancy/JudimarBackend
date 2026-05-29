@@ -37,6 +37,7 @@ function attachMetadata(product, metaMap) {
     category: meta?.category ?? "Geral",
     availableDays: meta?.availableDays ?? [],
     waiterOnly: meta?.waiterOnly ?? false,
+    isAddon: meta?.isAddon ?? false,
     hasPriceVariants: meta?.hasPriceVariants ?? false,
     commercialPrice: meta?.commercialPrice ?? null,
     pratoFeitoPrice: meta?.pratoFeitoPrice ?? null,
@@ -49,7 +50,7 @@ function attachMetadata(product, metaMap) {
 async function fetchProductMetadata(ids) {
   if (!ids.length) return new Map();
   const rows =
-    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice" FROM "Product" WHERE "id" = ANY(${ids})`;
+    await prisma.$queryRaw`SELECT "id", "category", "availableDays", "waiterOnly", "isAddon", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice" FROM "Product" WHERE "id" = ANY(${ids})`;
   return new Map(
     rows.map((r) => [
       r.id,
@@ -57,6 +58,7 @@ async function fetchProductMetadata(ids) {
         category: r.category ?? "Geral",
         availableDays: normalizeAvailableDays(r.availableDays),
         waiterOnly: Boolean(r.waiterOnly),
+        isAddon: Boolean(r.isAddon),
         hasPriceVariants: Boolean(r.hasPriceVariants),
         commercialPrice:
           r.commercialPrice != null ? Number(r.commercialPrice) : null,
@@ -100,6 +102,7 @@ export class ProductRepository {
     category,
     availableDays,
     waiterOnly,
+    isAddon,
     hasPriceVariants,
     commercialPrice,
     pratoFeitoPrice,
@@ -126,13 +129,15 @@ export class ProductRepository {
       include: { sizes: { orderBy: { size: "asc" } } },
     });
     const cat = category ?? "Geral";
+    const isAdditional = Boolean(isAddon);
     const days = normalizeAvailableDays(availableDays);
     await prisma.$executeRaw`
       UPDATE "Product"
       SET
-        "category" = ${cat},
+        "category" = ${isAdditional ? "Adicional" : cat},
         "availableDays" = ${days},
         "waiterOnly" = ${Boolean(waiterOnly)},
+        "isAddon" = ${isAdditional},
         "hasPriceVariants" = ${Boolean(hasPriceVariants)},
         "commercialPrice" = ${hasPriceVariants ? commercialPrice : null},
         "pratoFeitoPrice" = ${hasPriceVariants ? pratoFeitoPrice : null},
@@ -143,9 +148,10 @@ export class ProductRepository {
     const { stock, stockMinimum, ...rest } = product;
     return {
       ...rest,
-      category: cat,
+      category: isAdditional ? "Adicional" : cat,
       availableDays: days,
       waiterOnly: Boolean(waiterOnly),
+      isAddon: isAdditional,
       hasPriceVariants: Boolean(hasPriceVariants),
       commercialPrice: hasPriceVariants ? commercialPrice : null,
       pratoFeitoPrice: hasPriceVariants ? pratoFeitoPrice : null,
@@ -163,6 +169,7 @@ export class ProductRepository {
       category,
       availableDays,
       waiterOnly,
+      isAddon,
       hasPriceVariants,
       commercialPrice,
       pratoFeitoPrice,
@@ -176,6 +183,7 @@ export class ProductRepository {
       let resolvedCategory = category;
       let resolvedAvailableDays = availableDays;
       let resolvedWaiterOnly = waiterOnly;
+      let resolvedIsAddon = isAddon;
       let resolvedHasPriceVariants = hasPriceVariants;
       let resolvedCommercialPrice = commercialPrice;
       let resolvedPratoFeitoPrice = pratoFeitoPrice;
@@ -196,6 +204,7 @@ export class ProductRepository {
         category !== undefined ||
         availableDays !== undefined ||
         waiterOnly !== undefined ||
+        isAddon !== undefined ||
         hasPriceVariants !== undefined ||
         commercialPrice !== undefined ||
         pratoFeitoPrice !== undefined ||
@@ -203,7 +212,7 @@ export class ProductRepository {
         pratoFeitoCostPrice !== undefined
       ) {
         const existingRow = await tx.$queryRaw`
-          SELECT "category", "availableDays", "waiterOnly", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice"
+          SELECT "category", "availableDays", "waiterOnly", "isAddon", "hasPriceVariants", "commercialPrice", "pratoFeitoPrice", "commercialCostPrice", "pratoFeitoCostPrice"
           FROM "Product"
           WHERE "id" = ${productId}
         `;
@@ -215,6 +224,8 @@ export class ProductRepository {
             : normalizeAvailableDays(current.availableDays);
         resolvedWaiterOnly =
           waiterOnly !== undefined ? Boolean(waiterOnly) : current.waiterOnly;
+        resolvedIsAddon =
+          isAddon !== undefined ? Boolean(isAddon) : Boolean(current.isAddon);
         resolvedHasPriceVariants =
           hasPriceVariants !== undefined
             ? Boolean(hasPriceVariants)
@@ -246,9 +257,10 @@ export class ProductRepository {
         await tx.$executeRaw`
           UPDATE "Product"
           SET
-            "category" = ${resolvedCategory},
+            "category" = ${resolvedIsAddon ? "Adicional" : resolvedCategory},
             "availableDays" = ${resolvedAvailableDays},
             "waiterOnly" = ${Boolean(resolvedWaiterOnly)},
+            "isAddon" = ${Boolean(resolvedIsAddon)},
             "hasPriceVariants" = ${Boolean(resolvedHasPriceVariants)},
             "commercialPrice" = ${resolvedHasPriceVariants ? resolvedCommercialPrice : null},
             "pratoFeitoPrice" = ${resolvedHasPriceVariants ? resolvedPratoFeitoPrice : null},
@@ -277,10 +289,13 @@ export class ProductRepository {
       const { stock, stockMinimum, ...rest } = updated ?? {};
       return {
         ...rest,
-        category: resolvedCategory ?? updated?.category ?? "Geral",
+        category: resolvedIsAddon
+          ? "Adicional"
+          : resolvedCategory ?? updated?.category ?? "Geral",
         availableDays:
           resolvedAvailableDays ?? updated?.availableDays ?? [],
         waiterOnly: resolvedWaiterOnly ?? updated?.waiterOnly ?? false,
+        isAddon: resolvedIsAddon ?? updated?.isAddon ?? false,
         hasPriceVariants:
           resolvedHasPriceVariants ?? updated?.hasPriceVariants ?? false,
         commercialPrice:
@@ -339,6 +354,7 @@ export class ProductRepository {
          AND o."paymentStatus"::text = 'APROVADO'
          AND p."isActive" = true
          AND p."isCrust" = false
+         AND p."isAddon" = false
        GROUP BY oi."productId"
        ORDER BY "soldCount" DESC, oi."productId" ASC
        LIMIT $1`,

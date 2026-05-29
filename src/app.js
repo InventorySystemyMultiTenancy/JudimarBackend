@@ -357,6 +357,13 @@ app.patch(
 );
 
 app.patch(
+  "/api/orders/:orderId/items/:itemId",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.updateItem(req, res, next),
+);
+
+app.patch(
   "/api/orders/:orderId/assign-motoboy",
   authenticateToken,
   authorizeRoles("ADMIN", "FUNCIONARIO", "COZINHA"),

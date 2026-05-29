@@ -194,6 +194,27 @@ export class OrderController {
     }
   }
 
+  async updateItem(req, res, next) {
+    try {
+      const updatedOrder = await orderService.updateOrderItem(
+        req.params.orderId,
+        req.params.itemId,
+        {
+          productId: req.body?.productId,
+          quantity: req.body?.quantity,
+          priceVariant: req.body?.priceVariant,
+        },
+      );
+
+      return res.status(200).json({
+        message: "Item do pedido atualizado.",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async analytics(req, res, next) {
     try {
       const { from, to } = req.query;

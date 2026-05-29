@@ -74,6 +74,7 @@ model Product {
   stockMinimum Int          @default(0)
   availableDays String[]    @default([])
   waiterOnly  Boolean       @default(false)
+  isAddon     Boolean       @default(false)
   hasPriceVariants Boolean  @default(false)
   commercialPrice Decimal?  @db.Decimal(10, 2)
   pratoFeitoPrice Decimal?  @db.Decimal(10, 2)

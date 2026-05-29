@@ -340,6 +340,93 @@ export class OrderService {
     return updatedOrder;
   }
 
+  async updateOrderItem(orderId, itemId, { productId, quantity, priceVariant }) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (order.status === "CANCELADO") {
+      throw new AppError("Pedido cancelado nao pode ser alterado.", 409);
+    }
+
+    if (order.paymentStatus === "APROVADO") {
+      throw new AppError("Pedido pago nao pode ser alterado.", 409);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const existingItem = await tx.orderItem.findFirst({
+        where: { id: itemId, orderId },
+      });
+
+      if (!existingItem) {
+        throw new AppError("Item do pedido nao encontrado.", 404);
+      }
+
+      const normalizedItem = await this.#normalizeItemInTransaction(tx, {
+        productId,
+        quantity: quantity ?? existingItem.quantity,
+        priceVariant,
+      });
+
+      await tx.orderItem.update({
+        where: { id: itemId },
+        data: {
+          productId: normalizedItem.productId,
+          quantity: normalizedItem.quantity,
+          unitPrice: new Prisma.Decimal(
+            fromCents(normalizedItem.unitPriceCents),
+          ),
+          totalPrice: new Prisma.Decimal(
+            fromCents(normalizedItem.totalPriceCents),
+          ),
+          addons: normalizedItem.addons,
+          removedIngredients: normalizedItem.removedIngredients,
+          notes: existingItem.notes ?? null,
+          priceVariant: normalizedItem.priceVariant ?? null,
+          waiterDeliveredAt: null,
+        },
+      });
+
+      const totalRows = await tx.$queryRaw`
+        SELECT COALESCE(SUM("totalPrice"), 0)::decimal AS total
+        FROM "OrderItem"
+        WHERE "orderId" = ${orderId}
+      `;
+      const nextTotal = Number(totalRows?.[0]?.total ?? 0).toFixed(2);
+
+      await tx.$executeRaw`
+        UPDATE "Order"
+        SET total = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE id = ${orderId}
+      `;
+
+      await tx.$executeRaw`
+        UPDATE "Payment"
+        SET amount = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE "orderId" = ${orderId}
+      `;
+    });
+
+    const refreshedOrder = await this.orderRepository.findById(orderId);
+
+    emitPaymentUpdated({
+      orderId: refreshedOrder.id,
+      paymentStatus: refreshedOrder.paymentStatus,
+      amount: Number(refreshedOrder.total ?? 0),
+    });
+    emitOrderStatusUpdated({
+      orderId: refreshedOrder.id,
+      userId: refreshedOrder.userId,
+      previousStatus: order.status,
+      status: refreshedOrder.status,
+      itemChanged: true,
+    });
+
+    return refreshedOrder;
+  }
+
   async updateOrderStatus(orderId, nextStatus) {
     const order = await this.orderRepository.findById(orderId);
 
@@ -1443,17 +1530,48 @@ export class OrderService {
         },
       });
 
-      if (addonRows.length !== addonIds.length) {
+      const legacyAddonIds = new Set(addonRows.map((addon) => addon.id));
+      const productAddonIds = addonIds.filter((id) => !legacyAddonIds.has(id));
+      const productAddonRows = productAddonIds.length
+        ? await tx.$queryRaw`
+            SELECT p.id, p.name, ps.price
+            FROM "Product" p
+            LEFT JOIN "ProductSize" ps ON ps."productId" = p.id
+            WHERE p.id = ANY(${productAddonIds})
+              AND p."isActive" = true
+              AND p."isAddon" = true
+            ORDER BY ps.price ASC
+          `
+        : [];
+
+      const productAddonsById = new Map();
+      for (const addon of productAddonRows) {
+        if (!productAddonsById.has(addon.id)) {
+          productAddonsById.set(addon.id, addon);
+        }
+      }
+
+      if (addonRows.length + productAddonsById.size !== addonIds.length) {
         throw new AppError("Um ou mais adicionais sao invalidos.", 422);
       }
 
-      addons = addonRows.map((addon) => ({
-        id: addon.id,
-        name: addon.name,
-        price: Number(addon.price),
-      }));
+      addons = [
+        ...addonRows.map((addon) => ({
+          id: addon.id,
+          name: addon.name,
+          price: Number(addon.price),
+        })),
+        ...productAddonIds.map((id) => {
+          const addon = productAddonsById.get(id);
+          return {
+            id: addon.id,
+            name: addon.name,
+            price: Number(addon.price),
+          };
+        }),
+      ];
 
-      addonsCents = addonRows.reduce(
+      addonsCents = addons.reduce(
         (sum, addon) => sum + toCents(addon.price),
         0,
       );

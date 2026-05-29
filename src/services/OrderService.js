@@ -105,6 +105,10 @@ export class OrderService {
           (acc, item) => acc + item.totalPriceCents,
           0,
         );
+        const onlyWaiterItems = normalizedItems.every(
+          (item) => item.waiterOnly,
+        );
+        const initialStatus = onlyWaiterItems ? "ENTREGUE" : "PREPARANDO";
 
         const paymentPayload = {
           provider: "MERCADO_PAGO",
@@ -121,7 +125,8 @@ export class OrderService {
           ...(comandaId ? { comandaId } : {}),
           deliveryAddress: deliveryAddress ?? null,
           notes,
-          status: "PREPARANDO",
+          status: initialStatus,
+          ...(onlyWaiterItems ? { deliveredAt: new Date() } : {}),
           total: new Prisma.Decimal(fromCents(totalCents)),
           paymentStatus: "PENDENTE",
           ...(isPickup != null ? { isPickup } : {}),
@@ -147,6 +152,7 @@ export class OrderService {
               removedIngredients: item.removedIngredients,
               notes: item.notes ?? null,
               priceVariant: item.priceVariant ?? null,
+              ...(item.waiterOnly ? { waiterDeliveredAt: new Date() } : {}),
             })),
           },
           payment: {
@@ -1585,6 +1591,7 @@ export class OrderService {
       quantity,
       unitPriceCents,
       totalPriceCents,
+      waiterOnly: Boolean(product.waiterOnly),
       addons,
       removedIngredients: item.removedIngredients ?? null,
       notes: item.notes ?? null,

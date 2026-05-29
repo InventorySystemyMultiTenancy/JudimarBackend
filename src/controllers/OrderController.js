@@ -215,6 +215,42 @@ export class OrderController {
     }
   }
 
+  async addDeliveredItem(req, res, next) {
+    try {
+      const updatedOrder = await orderService.addDeliveredOrderItem(
+        req.params.orderId,
+        {
+          productId: req.body?.productId,
+          quantity: req.body?.quantity,
+          priceVariant: req.body?.priceVariant,
+        },
+      );
+
+      return res.status(201).json({
+        message: "Item adicionado ao pedido.",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
+  async removeItem(req, res, next) {
+    try {
+      const updatedOrder = await orderService.removeOrderItem(
+        req.params.orderId,
+        req.params.itemId,
+      );
+
+      return res.status(200).json({
+        message: "Item removido do pedido.",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   async analytics(req, res, next) {
     try {
       const { from, to } = req.query;
@@ -419,11 +455,21 @@ export class OrderController {
       if (!ALLOWED_METHODS.includes(paymentMethod)) {
         throw new AppError("Escolha a forma de pagamento.", 422);
       }
-      const order = await orderService.markPaidByMotoboy(
-        req.params.orderId,
-        req.user,
-        paymentMethod,
-      );
+      const itemIds = Array.isArray(req.body?.itemIds)
+        ? req.body.itemIds.map((itemId) => String(itemId ?? "")).filter(Boolean)
+        : [];
+      const order = itemIds.length
+        ? await orderService.markOrderItemsPaid(
+            req.params.orderId,
+            req.user,
+            paymentMethod,
+            itemIds,
+          )
+        : await orderService.markPaidByMotoboy(
+            req.params.orderId,
+            req.user,
+            paymentMethod,
+          );
       return res
         .status(200)
         .json({ message: "Pagamento confirmado.", data: order });

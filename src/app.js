@@ -363,6 +363,20 @@ app.patch(
   (req, res, next) => orderController.updateItem(req, res, next),
 );
 
+app.post(
+  "/api/orders/:orderId/items",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.addDeliveredItem(req, res, next),
+);
+
+app.delete(
+  "/api/orders/:orderId/items/:itemId",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.removeItem(req, res, next),
+);
+
 app.patch(
   "/api/orders/:orderId/assign-motoboy",
   authenticateToken,

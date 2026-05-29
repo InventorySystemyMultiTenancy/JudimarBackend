@@ -426,6 +426,136 @@ export class OrderService {
     return refreshedOrder;
   }
 
+  async addDeliveredOrderItem(orderId, { productId, quantity, priceVariant }) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (order.status === "CANCELADO") {
+      throw new AppError("Pedido cancelado nao pode ser alterado.", 409);
+    }
+
+    if (order.paymentStatus === "APROVADO") {
+      throw new AppError("Pedido pago nao pode ser alterado.", 409);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const normalizedItem = await this.#normalizeItemInTransaction(tx, {
+        productId,
+        quantity: quantity ?? 1,
+        priceVariant,
+        notes: "ADICIONADO NO CAIXA",
+      });
+
+      await tx.orderItem.create({
+        data: {
+          orderId,
+          productId: normalizedItem.productId,
+          quantity: normalizedItem.quantity,
+          unitPrice: new Prisma.Decimal(
+            fromCents(normalizedItem.unitPriceCents),
+          ),
+          totalPrice: new Prisma.Decimal(
+            fromCents(normalizedItem.totalPriceCents),
+          ),
+          addons: normalizedItem.addons,
+          removedIngredients: normalizedItem.removedIngredients,
+          notes: normalizedItem.notes ?? null,
+          priceVariant: normalizedItem.priceVariant ?? null,
+          waiterDeliveredAt: new Date(),
+        },
+      });
+
+      const totalRows = await tx.$queryRaw`
+        SELECT COALESCE(SUM("totalPrice"), 0)::decimal AS total
+        FROM "OrderItem"
+        WHERE "orderId" = ${orderId}
+      `;
+      const nextTotal = Number(totalRows?.[0]?.total ?? 0).toFixed(2);
+
+      await tx.$executeRaw`
+        UPDATE "Order"
+        SET total = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE id = ${orderId}
+      `;
+
+      await tx.$executeRaw`
+        UPDATE "Payment"
+        SET amount = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE "orderId" = ${orderId}
+      `;
+    });
+
+    const refreshedOrder = await this.orderRepository.findById(orderId);
+
+    emitPaymentUpdated({
+      orderId: refreshedOrder.id,
+      paymentStatus: refreshedOrder.paymentStatus,
+      amount: Number(refreshedOrder.total ?? 0),
+    });
+
+    return refreshedOrder;
+  }
+
+  async removeOrderItem(orderId, itemId) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (order.status === "CANCELADO") {
+      throw new AppError("Pedido cancelado nao pode ser alterado.", 409);
+    }
+
+    if (order.paymentStatus === "APROVADO") {
+      throw new AppError("Pedido pago nao pode ser alterado.", 409);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const existingItem = await tx.orderItem.findFirst({
+        where: { id: itemId, orderId },
+      });
+
+      if (!existingItem) {
+        throw new AppError("Item do pedido nao encontrado.", 404);
+      }
+
+      await tx.orderItem.delete({ where: { id: itemId } });
+
+      const totalRows = await tx.$queryRaw`
+        SELECT COALESCE(SUM("totalPrice"), 0)::decimal AS total
+        FROM "OrderItem"
+        WHERE "orderId" = ${orderId}
+      `;
+      const nextTotal = Number(totalRows?.[0]?.total ?? 0).toFixed(2);
+
+      await tx.$executeRaw`
+        UPDATE "Order"
+        SET total = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE id = ${orderId}
+      `;
+
+      await tx.$executeRaw`
+        UPDATE "Payment"
+        SET amount = ${nextTotal}::decimal, "updatedAt" = NOW()
+        WHERE "orderId" = ${orderId}
+      `;
+    });
+
+    const refreshedOrder = await this.orderRepository.findById(orderId);
+
+    emitPaymentUpdated({
+      orderId: refreshedOrder.id,
+      paymentStatus: refreshedOrder.paymentStatus,
+      amount: Number(refreshedOrder.total ?? 0),
+    });
+
+    return refreshedOrder;
+  }
+
   async updateOrderStatus(orderId, nextStatus) {
     const order = await this.orderRepository.findById(orderId);
 
@@ -1399,6 +1529,8 @@ export class OrderService {
       throw new AppError("Acesso negado.", 403);
     }
 
+    await this.orderRepository.markItemsPaid(orderId);
+
     const updatedOrder = await this.orderRepository.updatePaymentStatus(
       orderId,
       "APROVADO",
@@ -1409,6 +1541,61 @@ export class OrderService {
       orderId,
       userId: order.userId,
       paymentStatus: "APROVADO",
+    });
+
+    return updatedOrder;
+  }
+
+  async markOrderItemsPaid(orderId, user, paymentMethod, itemIds = []) {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) {
+      throw new AppError("Pedido nao encontrado.", 404);
+    }
+
+    if (!["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(user?.role)) {
+      throw new AppError("Acesso negado.", 403);
+    }
+
+    if (order.status === "CANCELADO") {
+      throw new AppError("Pedido cancelado nao pode ser pago.", 409);
+    }
+
+    if (order.paymentStatus === "APROVADO") {
+      return order;
+    }
+
+    const normalizedItemIds = [...new Set(itemIds.filter(Boolean))];
+    if (!normalizedItemIds.length) {
+      return this.markPaidByMotoboy(orderId, user, paymentMethod);
+    }
+
+    const unpaidItems = (order.items ?? []).filter((item) => !item.paidAt);
+    const validIds = new Set(unpaidItems.map((item) => item.id));
+
+    if (normalizedItemIds.some((itemId) => !validIds.has(itemId))) {
+      throw new AppError("Um ou mais itens nao estao abertos neste pedido.", 422);
+    }
+
+    await this.orderRepository.markItemsPaid(orderId, normalizedItemIds);
+    const remaining = await this.orderRepository.getUnpaidTotal(orderId);
+
+    let updatedOrder = await this.orderRepository.findById(orderId);
+
+    if (remaining.count === 0) {
+      updatedOrder = await this.orderRepository.updatePaymentStatus(
+        orderId,
+        "APROVADO",
+        paymentMethod,
+      );
+    } else {
+      await this.paymentRepository.updateAmount(orderId, remaining.total);
+    }
+
+    emitPaymentUpdated({
+      orderId,
+      userId: order.userId,
+      paymentStatus: remaining.count === 0 ? "APROVADO" : "PENDENTE",
+      amount: remaining.total,
     });
 
     return updatedOrder;

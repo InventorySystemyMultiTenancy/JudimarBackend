@@ -471,6 +471,41 @@ export class OrderRepository {
     return this.findById(orderId);
   }
 
+  async markItemsPaid(orderId, itemIds = []) {
+    if (itemIds.length) {
+      await prisma.$executeRaw`
+        UPDATE "OrderItem"
+        SET "paidAt" = NOW()
+        WHERE "orderId" = ${orderId}
+          AND id = ANY(${itemIds})
+          AND "paidAt" IS NULL
+      `;
+      return;
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "OrderItem"
+      SET "paidAt" = NOW()
+      WHERE "orderId" = ${orderId}
+        AND "paidAt" IS NULL
+    `;
+  }
+
+  async getUnpaidTotal(orderId) {
+    const rows = await prisma.$queryRaw`
+      SELECT COALESCE(SUM("totalPrice"), 0)::decimal AS total,
+             COUNT(*)::int AS count
+      FROM "OrderItem"
+      WHERE "orderId" = ${orderId}
+        AND "paidAt" IS NULL
+    `;
+
+    return {
+      total: Number(rows?.[0]?.total ?? 0),
+      count: Number(rows?.[0]?.count ?? 0),
+    };
+  }
+
   async saveTerminalIntentId(orderId, intentId) {
     await prisma.$executeRaw`
       UPDATE "Order" SET "terminalIntentId" = ${intentId}, "updatedAt" = NOW()
@@ -887,14 +922,27 @@ export class OrderRepository {
       comandas = [];
     }
 
-    return orders.map((order) => ({
-      ...order,
-      items: items.filter((item) => item.orderId === order.id),
-      user: users.find((user) => user.id === order.userId) ?? null,
-      mesa: mesas.find((mesa) => mesa.id === order.mesaId) ?? null,
-      comanda:
-        comandas.find((comanda) => comanda.id === order.comandaId) ?? null,
-    }));
+    return orders
+      .map((order) => {
+        const unpaidItems = items.filter(
+          (item) => item.orderId === order.id && !item.paidAt,
+        );
+        const pendingTotal = unpaidItems.reduce(
+          (sum, item) => sum + Number(item.totalPrice ?? 0),
+          0,
+        );
+
+        return {
+          ...order,
+          total: pendingTotal,
+          items: unpaidItems,
+          user: users.find((user) => user.id === order.userId) ?? null,
+          mesa: mesas.find((mesa) => mesa.id === order.mesaId) ?? null,
+          comanda:
+            comandas.find((comanda) => comanda.id === order.comandaId) ?? null,
+        };
+      })
+      .filter((order) => order.items.length > 0);
   }
 
   async findForMotoboy({ assignedMotoboyId } = {}) {

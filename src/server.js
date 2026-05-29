@@ -40,6 +40,7 @@ async function runMigrations() {
     `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "notes" TEXT`,
     `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "priceVariant" TEXT`,
     `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "waiterDeliveredAt" TIMESTAMP(3)`,
+    `ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "paidAt" TIMESTAMP(3)`,
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "isAddon" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "hasPriceVariants" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "commercialPrice" DECIMAL(10,2)`,

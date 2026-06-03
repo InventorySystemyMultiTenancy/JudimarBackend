@@ -270,7 +270,13 @@ export class OrderController {
       const paymentMethod = req.body?.paymentMethod;
       const payLater = req.body?.payLater === true;
       const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO", "ESTORNADO"];
-      const ALLOWED_METHODS = ["CREDITO", "DEBITO", "PIX", "DINHEIRO"];
+      const ALLOWED_METHODS = [
+        "CREDITO",
+        "DEBITO",
+        "PIX",
+        "DINHEIRO",
+        "VOUCHER",
+      ];
       if (!ALLOWED.includes(paymentStatus)) {
         throw new AppError("paymentStatus inválido.", 422);
       }
@@ -451,7 +457,13 @@ export class OrderController {
   async markPaid(req, res, next) {
     try {
       const paymentMethod = req.body?.paymentMethod;
-      const ALLOWED_METHODS = ["CREDITO", "DEBITO", "PIX", "DINHEIRO"];
+      const ALLOWED_METHODS = [
+        "CREDITO",
+        "DEBITO",
+        "PIX",
+        "DINHEIRO",
+        "VOUCHER",
+      ];
       if (!ALLOWED_METHODS.includes(paymentMethod)) {
         throw new AppError("Escolha a forma de pagamento.", 422);
       }

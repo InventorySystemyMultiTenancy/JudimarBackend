@@ -1283,6 +1283,7 @@ export class OrderService {
       DEBITO: "Débito",
       PIX: "Pix",
       DINHEIRO: "Dinheiro",
+      VOUCHER: "Voucher",
       mercado_pago: "Mercado Pago",
       nao_informado: "Não informado",
     };

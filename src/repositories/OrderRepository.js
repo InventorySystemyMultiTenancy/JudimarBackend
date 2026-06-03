@@ -455,11 +455,30 @@ export class OrderRepository {
     const decimalTotal = Number(total).toFixed(2);
 
     await prisma.$transaction(async (tx) => {
+      const itemRows = await tx.$queryRaw`
+        SELECT id, quantity
+        FROM "OrderItem"
+        WHERE "orderId" = ${orderId}
+          AND "paidAt" IS NULL
+      `;
+
       await tx.$executeRaw`
         UPDATE "Order"
         SET total = ${decimalTotal}::decimal, "updatedAt" = NOW()
         WHERE id = ${orderId}
       `;
+
+      if (itemRows.length === 1) {
+        const quantity = Math.max(1, Number(itemRows[0].quantity ?? 1));
+        const unitPrice = (Number(decimalTotal) / quantity).toFixed(2);
+
+        await tx.$executeRaw`
+          UPDATE "OrderItem"
+          SET "unitPrice" = ${unitPrice}::decimal,
+              "totalPrice" = ${decimalTotal}::decimal
+          WHERE id = ${itemRows[0].id}
+        `;
+      }
 
       await tx.$executeRaw`
         UPDATE "Payment"
@@ -927,15 +946,29 @@ export class OrderRepository {
         const unpaidItems = items.filter(
           (item) => item.orderId === order.id && !item.paidAt,
         );
-        const pendingTotal = unpaidItems.reduce(
+        const itemPendingTotal = unpaidItems.reduce(
           (sum, item) => sum + Number(item.totalPrice ?? 0),
           0,
         );
+        const orderTotal = Number(order.total ?? 0);
+        const orderItems = items.filter((item) => item.orderId === order.id);
+        const isFullyUnpaid = unpaidItems.length === orderItems.length;
+        const pendingTotal = isFullyUnpaid ? orderTotal : itemPendingTotal;
+        const displayItems =
+          isFullyUnpaid &&
+          unpaidItems.length === 1 &&
+          Math.abs(orderTotal - itemPendingTotal) >= 0.01
+            ? unpaidItems.map((item) => ({
+                ...item,
+                unitPrice: orderTotal / Math.max(1, Number(item.quantity ?? 1)),
+                totalPrice: orderTotal,
+              }))
+            : unpaidItems;
 
         return {
           ...order,
           total: pendingTotal,
-          items: unpaidItems,
+          items: displayItems,
           user: users.find((user) => user.id === order.userId) ?? null,
           mesa: mesas.find((mesa) => mesa.id === order.mesaId) ?? null,
           comanda:

@@ -35,6 +35,11 @@ const startOfDay = (date) =>
 const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const isMercadoPagoInternalReference = (value) =>
   !!value && /^INSTORE-/i.test(String(value));
+const isDiversosProduct = (product) =>
+  String(product?.name ?? "")
+    .trim()
+    .toLowerCase()
+    .includes("diversos");
 
 export class OrderService {
   constructor(
@@ -1694,11 +1699,22 @@ export class OrderService {
     const hasPriceVariants = Boolean(priceConfig.hasPriceVariants);
     const requestedPriceVariant =
       item.priceVariant === "PRATO_FEITO" ? "PRATO_FEITO" : "COMERCIAL";
-    const basePrice = hasPriceVariants
-      ? requestedPriceVariant === "PRATO_FEITO"
-        ? priceConfig.pratoFeitoPrice
-        : priceConfig.commercialPrice
-      : product.sizes?.[0]?.price;
+    const requestedManualPrice = Number(item.manualPrice);
+    const manualPrice =
+      item.manualPrice != null &&
+      isDiversosProduct(product) &&
+      Number.isFinite(requestedManualPrice) &&
+      requestedManualPrice > 0
+        ? requestedManualPrice
+        : null;
+    const basePrice =
+      manualPrice != null
+        ? manualPrice
+        : hasPriceVariants
+          ? requestedPriceVariant === "PRATO_FEITO"
+            ? priceConfig.pratoFeitoPrice
+            : priceConfig.commercialPrice
+          : product.sizes?.[0]?.price;
     if (basePrice == null) {
       throw new AppError("Produto sem preco configurado.", 422);
     }

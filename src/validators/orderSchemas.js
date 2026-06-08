@@ -13,6 +13,7 @@ const itemSchema = z
     notes: z.string().max(500).optional(),
     priceVariant: z.enum(["COMERCIAL", "PRATO_FEITO"]).optional(),
     manualPrice: z.number().positive().max(999999).optional(),
+    deliverImmediately: z.boolean().optional(),
   })
   .superRefine((item, ctx) => {
     if (!item.addonIds?.length) {

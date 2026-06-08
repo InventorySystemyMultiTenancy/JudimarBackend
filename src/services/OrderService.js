@@ -1782,13 +1782,16 @@ export class OrderService {
 
     const unitPriceCents = toCents(basePrice) + addonsCents;
     const totalPriceCents = unitPriceCents * quantity;
+    const deliverImmediately =
+      Boolean(product.waiterOnly) ||
+      (item.deliverImmediately === true && isDiversosProduct(product));
 
     return {
       productId: item.productId,
       quantity,
       unitPriceCents,
       totalPriceCents,
-      waiterOnly: Boolean(product.waiterOnly),
+      waiterOnly: deliverImmediately,
       addons,
       removedIngredients: item.removedIngredients ?? null,
       notes: item.notes ?? null,

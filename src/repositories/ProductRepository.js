@@ -39,19 +39,10 @@ function isViagemCategory(category) {
   );
 }
 
-function isBebidasCategory(category) {
-  const normalized = String(category ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-  return normalized === "bebida" || normalized === "bebidas";
-}
-
 function matchesAudience(product, audience = "regular") {
   const isViagem = isViagemCategory(product.category);
   return audience === "viagem"
-    ? isViagem || isBebidasCategory(product.category)
+    ? isViagem || Boolean(product.waiterOnly)
     : !isViagem;
 }
 

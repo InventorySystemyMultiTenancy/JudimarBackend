@@ -582,6 +582,14 @@ export class OrderService {
       allowedTransitions.push("SAIU_PARA_ENTREGA");
     }
 
+    if (
+      order.status === "PREPARANDO" &&
+      nextStatus === "ENTREGUE" &&
+      order.isPickup
+    ) {
+      allowedTransitions.push("ENTREGUE");
+    }
+
     if (!allowedTransitions.includes(nextStatus)) {
       throw new AppError(
         `Transicao invalida de ${order.status} para ${nextStatus}.`,

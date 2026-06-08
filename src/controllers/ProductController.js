@@ -20,6 +20,17 @@ export class ProductController {
     }
   }
 
+  async listViagem(_req, res, next) {
+    try {
+      const products = await productService.listViagemProducts();
+      return res.status(200).json({ data: products });
+    } catch (error) {
+      return next(
+        error instanceof AppError ? error : new AppError("Erro interno.", 500),
+      );
+    }
+  }
+
   async listAdmin(_req, res, next) {
     try {
       const products = await productService.listProductsForAdmin();

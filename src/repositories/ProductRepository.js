@@ -29,6 +29,21 @@ function isAvailableToday(product) {
   return days.length === 0 || days.includes(getTodayCode());
 }
 
+function isViagemCategory(category) {
+  return (
+    String(category ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase() === "viagem"
+  );
+}
+
+function matchesAudience(product, audience = "regular") {
+  const isViagem = isViagemCategory(product.category);
+  return audience === "viagem" ? isViagem : !isViagem;
+}
+
 function attachMetadata(product, metaMap) {
   const { stock, stockMinimum, ...rest } = product;
   const meta = metaMap.get(product.id);
@@ -74,7 +89,7 @@ async function fetchProductMetadata(ids) {
 }
 
 export class ProductRepository {
-  async findAll() {
+  async findAll({ audience = "regular" } = {}) {
     const products = await prisma.product.findMany({
       where: { isActive: true },
       include: { sizes: { orderBy: { size: "asc" } } },
@@ -83,6 +98,7 @@ export class ProductRepository {
     const metaMap = await fetchProductMetadata(products.map((p) => p.id));
     return products
       .map((p) => attachMetadata(p, metaMap))
+      .filter((product) => matchesAudience(product, audience))
       .filter((product) => isAvailableToday(product));
   }
 
@@ -344,7 +360,7 @@ export class ProductRepository {
     return attachMetadata(product, metaMap);
   }
 
-  async findTopSelling(limit = 6) {
+  async findTopSelling(limit = 6, { audience = "regular" } = {}) {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT oi."productId", SUM(oi.quantity)::int AS "soldCount"
        FROM "OrderItem" oi
@@ -394,6 +410,7 @@ export class ProductRepository {
         ...attachMetadata(product, metaMap),
         soldCount: soldCountById.get(product.id) ?? 0,
       }))
+      .filter((product) => matchesAudience(product, audience))
       .filter((product) => isAvailableToday(product));
   }
 

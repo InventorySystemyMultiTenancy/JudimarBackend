@@ -172,6 +172,12 @@ app.get("/api/twilio/status/:sid", async (req, res, next) => {
 });
 
 // Public product routes
+app.get(
+  "/api/products/viagem",
+  authenticateToken,
+  authorizeRoles("VIAGEM", "ADMIN"),
+  (req, res, next) => productController.listViagem(req, res, next),
+);
 app.get("/api/products", (req, res, next) =>
   productController.list(req, res, next),
 );

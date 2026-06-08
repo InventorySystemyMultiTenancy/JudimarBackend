@@ -9,7 +9,11 @@ export class ProductService {
   }
 
   async listProducts() {
-    return this.productRepository.findAll();
+    return this.productRepository.findAll({ audience: "regular" });
+  }
+
+  async listViagemProducts() {
+    return this.productRepository.findAll({ audience: "viagem" });
   }
 
   async listProductsForAdmin() {
@@ -17,7 +21,9 @@ export class ProductService {
   }
 
   async listTopSellingProducts(limit = 6) {
-    return this.productRepository.findTopSelling(limit);
+    return this.productRepository.findTopSelling(limit, {
+      audience: "regular",
+    });
   }
 
   async createProduct(data) {

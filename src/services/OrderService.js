@@ -1061,14 +1061,23 @@ export class OrderService {
     };
   }
 
-  async adminSetPaymentStatus(orderId, paymentStatus, paymentMethod) {
+  async adminSetPaymentStatus(orderId, paymentStatus, paymentMethod, metadata) {
     const order = await this.orderRepository.findById(orderId);
     if (!order) throw new AppError("Pedido não encontrado.", 404);
-    return this.orderRepository.updatePaymentStatus(
+    const updatedOrder = await this.orderRepository.updatePaymentStatus(
       orderId,
       paymentStatus,
       paymentMethod,
+      metadata,
     );
+
+    emitPaymentUpdated({
+      orderId,
+      userId: order.userId,
+      paymentStatus,
+    });
+
+    return updatedOrder;
   }
 
   /**

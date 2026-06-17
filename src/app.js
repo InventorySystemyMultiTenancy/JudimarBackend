@@ -444,7 +444,7 @@ app.patch(
 app.patch(
   "/api/orders/:orderId/payment-status",
   authenticateToken,
-  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
   (req, res, next) => orderController.adminUpdatePaymentStatus(req, res, next),
 );
 

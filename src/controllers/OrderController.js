@@ -268,6 +268,9 @@ export class OrderController {
     try {
       const { paymentStatus } = req.body;
       const paymentMethod = req.body?.paymentMethod;
+      const pendingCustomerName = String(
+        req.body?.pendingCustomerName ?? "",
+      ).trim();
       const payLater = req.body?.payLater === true;
       const ALLOWED = ["APROVADO", "PENDENTE", "RECUSADO", "ESTORNADO"];
       const ALLOWED_METHODS = [
@@ -290,14 +293,20 @@ export class OrderController {
       ) {
         throw new AppError("paymentMethod inválido.", 422);
       }
+      if (paymentMethod === "PENDENTE" && !pendingCustomerName) {
+        throw new AppError("Informe o nome do cliente.", 422);
+      }
       const order = await orderService.adminSetPaymentStatus(
         req.params.orderId,
         paymentStatus,
         paymentStatus === "APROVADO"
           ? paymentMethod
+          : paymentMethod === "PENDENTE"
+            ? "PENDENTE"
           : payLater && paymentStatus === "PENDENTE"
             ? "PAGAR_DEPOIS"
             : undefined,
+        paymentMethod === "PENDENTE" ? { pendingCustomerName } : undefined,
       );
       return res
         .status(200)

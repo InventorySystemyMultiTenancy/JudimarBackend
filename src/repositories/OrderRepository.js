@@ -441,14 +441,54 @@ export class OrderRepository {
     return this.findById(orderId);
   }
 
-  async updatePaymentStatus(orderId, paymentStatus, paymentMethod) {
-    return prisma.order.update({
-      where: { id: orderId },
-      data: {
-        paymentStatus,
-        ...(paymentMethod !== undefined ? { paymentMethod } : {}),
-      },
+  async updatePaymentStatus(orderId, paymentStatus, paymentMethod, metadata) {
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus,
+          ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+        },
+      });
+
+      if (metadata?.pendingCustomerName) {
+        const order = await tx.order.findUnique({
+          where: { id: orderId },
+          select: { total: true },
+        });
+        const payment = await tx.payment.findUnique({
+          where: { orderId },
+          select: { payload: true },
+        });
+        const payload =
+          payment?.payload && typeof payment.payload === "object"
+            ? payment.payload
+            : {};
+
+        await tx.payment.upsert({
+          where: { orderId },
+          update: {
+            status: paymentStatus,
+            payload: {
+              ...payload,
+              pendingCustomerName: metadata.pendingCustomerName,
+            },
+          },
+          create: {
+            orderId,
+            provider: "MANUAL",
+            status: paymentStatus,
+            amount: order?.total ?? 0,
+            payload: {
+              paymentMethod,
+              pendingCustomerName: metadata.pendingCustomerName,
+            },
+          },
+        });
+      }
     });
+
+    return this.findById(orderId);
   }
 
   async updateTotal(orderId, total) {
@@ -927,6 +967,7 @@ export class OrderRepository {
     const orderIds = orders.map((o) => o.id);
     const items = await this._fetchItemsForOrders(orderIds);
     const users = await this._fetchUsersForOrders(orderIds);
+    const payments = await this._fetchPaymentsForOrders(orderIds);
 
     let mesas = [];
     let comandas = [];
@@ -970,6 +1011,8 @@ export class OrderRepository {
           total: pendingTotal,
           items: displayItems,
           user: users.find((user) => user.id === order.userId) ?? null,
+          payment:
+            payments.find((payment) => payment.orderId === order.id) ?? null,
           mesa: mesas.find((mesa) => mesa.id === order.mesaId) ?? null,
           comanda:
             comandas.find((comanda) => comanda.id === order.comandaId) ?? null,

@@ -107,6 +107,7 @@ export class ComandaRepository {
       WHERE o."comandaId" IS NOT NULL
         AND o.status::text <> 'CANCELADO'
         AND o."paymentStatus"::text <> 'APROVADO'
+        AND COALESCE(o."paymentMethod"::text, '') <> 'PENDENTE'
       GROUP BY o."comandaId"
     `;
 

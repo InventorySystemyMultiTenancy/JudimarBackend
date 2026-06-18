@@ -108,6 +108,7 @@ export class ComandaRepository {
         AND o.status::text <> 'CANCELADO'
         AND o."paymentStatus"::text <> 'APROVADO'
         AND COALESCE(o."paymentMethod"::text, '') <> 'PENDENTE'
+        AND o.total > 0
       GROUP BY o."comandaId"
     `;
 

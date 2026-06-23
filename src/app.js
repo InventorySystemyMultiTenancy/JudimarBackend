@@ -9,6 +9,7 @@ import { PaymentController } from "./controllers/PaymentController.js";
 import { ProductController } from "./controllers/ProductController.js";
 import { MesaController } from "./controllers/MesaController.js";
 import { ComandaController } from "./controllers/ComandaController.js";
+import { BalanceController } from "./controllers/BalanceController.js";
 import {
   authenticateToken,
   authorizeRoles,
@@ -46,6 +47,7 @@ const paymentController = new PaymentController();
 const productController = new ProductController();
 const mesaController = new MesaController();
 const comandaController = new ComandaController();
+const balanceController = new BalanceController();
 
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -323,6 +325,27 @@ app.post(
   authenticateToken,
   authorizeRoles("CLIENTE", "ADMIN", "VIAGEM"),
   (req, res, next) => orderController.create(req, res, next),
+);
+
+app.get(
+  "/api/admin/balances/monthly",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  (req, res, next) => balanceController.getMonthly(req, res, next),
+);
+
+app.put(
+  "/api/admin/balances/monthly",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  (req, res, next) => balanceController.saveMonthly(req, res, next),
+);
+
+app.delete(
+  "/api/admin/balances/monthly",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO"),
+  (req, res, next) => balanceController.deleteMonthly(req, res, next),
 );
 
 app.get(

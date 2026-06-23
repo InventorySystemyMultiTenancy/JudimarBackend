@@ -8,7 +8,6 @@ export const balancePeriodSchema = z.object({
 });
 
 export const saveMonthlyBalanceSchema = balancePeriodSchema.extend({
-  grossRevenue: money,
   cardFees: money.default(0),
   deliveryFees: money.default(0),
   taxes: money.default(0),

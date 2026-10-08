@@ -627,6 +627,29 @@ export class OrderService {
     return updatedOrder;
   }
 
+  // Pedido de mesa/comanda só é pago depois que o cliente já recebeu o prato,
+  // então a baixa no caixa finaliza o pedido como ENTREGUE automaticamente.
+  async _autoDeliverPaidInHouseOrder(order) {
+    if (!order) return order;
+    if (!order.mesaId && !order.comandaId) return order;
+    if (["ENTREGUE", "CANCELADO"].includes(order.status)) return order;
+
+    const updatedOrder = await this.orderRepository.updateStatus(
+      order.id,
+      "ENTREGUE",
+      new Date(),
+    );
+
+    emitOrderStatusUpdated({
+      orderId: updatedOrder.id,
+      userId: order.userId,
+      previousStatus: order.status,
+      status: updatedOrder.status,
+    });
+
+    return updatedOrder;
+  }
+
   async markWaiterItemsDelivered(orderId, { itemIds = [] } = {}) {
     const order = await this.orderRepository.findById(orderId);
 
@@ -1044,7 +1067,13 @@ export class OrderService {
       amount: order.total,
     });
 
-    await this.orderRepository.updatePaymentStatus(orderId, paymentStatus);
+    const paidOrder = await this.orderRepository.updatePaymentStatus(
+      orderId,
+      paymentStatus,
+    );
+    if (paymentStatus === "APROVADO") {
+      await this._autoDeliverPaidInHouseOrder(paidOrder);
+    }
     console.log(
       `[webhook] ✅ Pedido ${orderId} atualizado para paymentStatus=${paymentStatus} (providerStatus=${providerStatus})`,
     );
@@ -1064,12 +1093,16 @@ export class OrderService {
   async adminSetPaymentStatus(orderId, paymentStatus, paymentMethod, metadata) {
     const order = await this.orderRepository.findById(orderId);
     if (!order) throw new AppError("Pedido não encontrado.", 404);
-    const updatedOrder = await this.orderRepository.updatePaymentStatus(
+    let updatedOrder = await this.orderRepository.updatePaymentStatus(
       orderId,
       paymentStatus,
       paymentMethod,
       metadata,
     );
+
+    if (paymentStatus === "APROVADO") {
+      updatedOrder = await this._autoDeliverPaidInHouseOrder(updatedOrder);
+    }
 
     emitPaymentUpdated({
       orderId,
@@ -1143,7 +1176,11 @@ export class OrderService {
       amount: order.total,
     });
 
-    await this.orderRepository.updatePaymentStatus(orderId, "APROVADO");
+    const paidOrder = await this.orderRepository.updatePaymentStatus(
+      orderId,
+      "APROVADO",
+    );
+    await this._autoDeliverPaidInHouseOrder(paidOrder);
 
     emitPaymentUpdated({
       orderId,
@@ -1554,11 +1591,12 @@ export class OrderService {
 
     await this.orderRepository.markItemsPaid(orderId);
 
-    const updatedOrder = await this.orderRepository.updatePaymentStatus(
+    let updatedOrder = await this.orderRepository.updatePaymentStatus(
       orderId,
       "APROVADO",
       paymentMethod,
     );
+    updatedOrder = await this._autoDeliverPaidInHouseOrder(updatedOrder);
 
     emitPaymentUpdated({
       orderId,
@@ -1610,6 +1648,7 @@ export class OrderService {
         "APROVADO",
         paymentMethod,
       );
+      updatedOrder = await this._autoDeliverPaidInHouseOrder(updatedOrder);
     } else {
       await this.paymentRepository.updateAmount(orderId, remaining.total);
     }

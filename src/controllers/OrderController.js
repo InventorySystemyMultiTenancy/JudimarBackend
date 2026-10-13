@@ -499,6 +499,40 @@ export class OrderController {
     }
   }
 
+  async markPaidBatch(req, res, next) {
+    try {
+      const paymentMethod = req.body?.paymentMethod;
+      const ALLOWED_METHODS = [
+        "CREDITO",
+        "DEBITO",
+        "PIX",
+        "DINHEIRO",
+        "VOUCHER",
+      ];
+      if (!ALLOWED_METHODS.includes(paymentMethod)) {
+        throw new AppError("Escolha a forma de pagamento.", 422);
+      }
+      const entries = Array.isArray(req.body?.orders)
+        ? req.body.orders.map((entry) => ({
+            orderId: String(entry?.orderId ?? ""),
+            itemIds: Array.isArray(entry?.itemIds)
+              ? entry.itemIds.map((itemId) => String(itemId ?? ""))
+              : [],
+          }))
+        : [];
+      const result = await orderService.markOrdersPaid(
+        entries,
+        req.user,
+        paymentMethod,
+      );
+      return res
+        .status(200)
+        .json({ message: "Pagamento confirmado.", data: result });
+    } catch (error) {
+      return this.#handleError(error, next);
+    }
+  }
+
   #handleError(error, next, context = null) {
     if (error instanceof ZodError) {
       console.warn("[OrderController] Zod validation error", {

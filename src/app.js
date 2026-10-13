@@ -434,6 +434,13 @@ app.patch(
   (req, res, next) => orderController.markPaid(req, res, next),
 );
 
+app.post(
+  "/api/orders/mark-paid-batch",
+  authenticateToken,
+  authorizeRoles("ADMIN", "FUNCIONARIO", "ATENDENTE"),
+  (req, res, next) => orderController.markPaidBatch(req, res, next),
+);
+
 app.get(
   "/api/admin/motoboys",
   authenticateToken,

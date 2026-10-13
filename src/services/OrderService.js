@@ -519,7 +519,7 @@ export class OrderService {
       throw new AppError("Pedido pago nao pode ser alterado.", 409);
     }
 
-    await prisma.$transaction(async (tx) => {
+    const closedInHouseOrder = await prisma.$transaction(async (tx) => {
       const existingItem = await tx.orderItem.findFirst({
         where: { id: itemId, orderId },
       });
@@ -529,6 +529,37 @@ export class OrderService {
       }
 
       await tx.orderItem.delete({ where: { id: itemId } });
+
+      // Se o item removido era o ultimo em aberto de um pedido parcialmente
+      // pago, o pedido esta quitado. Sem isso ele sumia do caixa mas continuava
+      // "ativo" na comanda.
+      const [itemCounts] = await tx.$queryRaw`
+        SELECT COUNT(*) FILTER (WHERE "paidAt" IS NULL)::int AS unpaid,
+               COUNT(*) FILTER (WHERE "paidAt" IS NOT NULL)::int AS paid
+        FROM "OrderItem"
+        WHERE "orderId" = ${orderId}
+      `;
+      let closedStatus = false;
+      if (itemCounts?.unpaid === 0 && itemCounts?.paid > 0) {
+        await tx.order.update({
+          where: { id: orderId },
+          data: { paymentStatus: "APROVADO" },
+        });
+
+        if (
+          (order.mesaId || order.comandaId) &&
+          !["ENTREGUE", "CANCELADO"].includes(order.status)
+        ) {
+          await tx.$executeRaw`
+            UPDATE "Order"
+            SET status = 'ENTREGUE'::"OrderStatus",
+                "deliveredAt" = NOW(),
+                "updatedAt" = NOW()
+            WHERE id = ${orderId}
+          `;
+          closedStatus = true;
+        }
+      }
 
       const totalRows = await tx.$queryRaw`
         SELECT COALESCE(SUM("totalPrice"), 0)::decimal AS total
@@ -548,9 +579,20 @@ export class OrderService {
         SET amount = ${nextTotal}::decimal, "updatedAt" = NOW()
         WHERE "orderId" = ${orderId}
       `;
+
+      return closedStatus;
     });
 
     const refreshedOrder = await this.orderRepository.findById(orderId);
+
+    if (closedInHouseOrder) {
+      emitOrderStatusUpdated({
+        orderId: refreshedOrder.id,
+        userId: order.userId,
+        previousStatus: order.status,
+        status: refreshedOrder.status,
+      });
+    }
 
     emitPaymentUpdated({
       orderId: refreshedOrder.id,
@@ -1589,22 +1631,193 @@ export class OrderService {
       throw new AppError("Acesso negado.", 403);
     }
 
-    await this.orderRepository.markItemsPaid(orderId);
+    await this.#settleOrdersPayment([{ orderId }], paymentMethod);
 
-    let updatedOrder = await this.orderRepository.updatePaymentStatus(
-      orderId,
-      "APROVADO",
-      paymentMethod,
+    return this.orderRepository.findById(orderId);
+  }
+
+  // Baixa de varios pedidos (ex.: todos de uma comanda) numa unica transacao:
+  // ou todos ficam pagos, ou nenhum. Antes cada pedido ia numa requisicao
+  // separada e, se uma falhasse, um pedido ficava em aberto e voltava a
+  // aparecer no caixa junto com o proximo pedido da mesma comanda.
+  async markOrdersPaid(entries, user, paymentMethod) {
+    if (!["ADMIN", "FUNCIONARIO", "ATENDENTE"].includes(user?.role)) {
+      throw new AppError("Acesso negado.", 403);
+    }
+
+    const itemIdsByOrder = new Map();
+    for (const entry of entries ?? []) {
+      const orderId = String(entry?.orderId ?? "").trim();
+      if (!orderId) continue;
+      const itemIds = itemIdsByOrder.get(orderId) ?? [];
+      itemIds.push(...(entry.itemIds ?? []).map(String).filter(Boolean));
+      itemIdsByOrder.set(orderId, itemIds);
+    }
+
+    if (!itemIdsByOrder.size) {
+      throw new AppError("Informe ao menos um pedido.", 422);
+    }
+
+    if (itemIdsByOrder.size > 200) {
+      throw new AppError("Muitos pedidos numa unica baixa.", 422);
+    }
+
+    const normalizedEntries = [...itemIdsByOrder.entries()].map(
+      ([orderId, itemIds]) => ({ orderId, itemIds }),
     );
-    updatedOrder = await this._autoDeliverPaidInHouseOrder(updatedOrder);
 
-    emitPaymentUpdated({
-      orderId,
-      userId: order.userId,
-      paymentStatus: "APROVADO",
-    });
+    await this.#settleOrdersPayment(normalizedEntries, paymentMethod);
 
-    return updatedOrder;
+    return { orderIds: normalizedEntries.map((entry) => entry.orderId) };
+  }
+
+  // Marca itens como pagos, fecha o pedido quando nao sobra item aberto e
+  // finaliza pedido de mesa/comanda como ENTREGUE, tudo na mesma transacao.
+  // Sem itemIds, paga o pedido inteiro.
+  async #settleOrdersPayment(entries, paymentMethod) {
+    // Ordem fixa de lock evita deadlock entre duas baixas simultaneas.
+    const sortedEntries = [...entries].sort((a, b) =>
+      a.orderId.localeCompare(b.orderId),
+    );
+
+    const events = await prisma.$transaction(
+      async (tx) => {
+        const pendingEvents = [];
+
+        for (const { orderId, itemIds = [] } of sortedEntries) {
+          const [order] = await tx.$queryRaw`
+            SELECT id, "userId", "mesaId", "comandaId",
+                   status::text AS status,
+                   "paymentStatus"::text AS "paymentStatus"
+            FROM "Order"
+            WHERE id = ${orderId}
+            FOR UPDATE
+          `;
+
+          if (!order) {
+            throw new AppError("Pedido nao encontrado.", 404);
+          }
+
+          if (order.status === "CANCELADO") {
+            throw new AppError("Pedido cancelado nao pode ser pago.", 409);
+          }
+
+          if (order.paymentStatus === "APROVADO") continue;
+
+          const unpaidItems = await tx.$queryRaw`
+            SELECT id, "totalPrice"
+            FROM "OrderItem"
+            WHERE "orderId" = ${orderId}
+              AND "paidAt" IS NULL
+          `;
+
+          const normalizedItemIds = [...new Set(itemIds.filter(Boolean))];
+          let remainingItems = [];
+
+          if (normalizedItemIds.length) {
+            const unpaidIds = new Set(unpaidItems.map((item) => item.id));
+            if (normalizedItemIds.some((itemId) => !unpaidIds.has(itemId))) {
+              throw new AppError(
+                "Um ou mais itens nao estao abertos neste pedido.",
+                422,
+              );
+            }
+
+            await tx.$executeRaw`
+              UPDATE "OrderItem"
+              SET "paidAt" = NOW()
+              WHERE "orderId" = ${orderId}
+                AND id = ANY(${normalizedItemIds})
+                AND "paidAt" IS NULL
+            `;
+
+            const paidIds = new Set(normalizedItemIds);
+            remainingItems = unpaidItems.filter(
+              (item) => !paidIds.has(item.id),
+            );
+          } else {
+            await tx.$executeRaw`
+              UPDATE "OrderItem"
+              SET "paidAt" = NOW()
+              WHERE "orderId" = ${orderId}
+                AND "paidAt" IS NULL
+            `;
+          }
+
+          if (remainingItems.length) {
+            const remainingTotal = remainingItems.reduce(
+              (sum, item) => sum + Number(item.totalPrice ?? 0),
+              0,
+            );
+
+            await tx.$executeRaw`
+              UPDATE "Payment"
+              SET amount = ${remainingTotal.toFixed(2)}::decimal,
+                  "updatedAt" = NOW()
+              WHERE "orderId" = ${orderId}
+            `;
+
+            pendingEvents.push({
+              payment: {
+                orderId,
+                userId: order.userId,
+                paymentStatus: "PENDENTE",
+                amount: remainingTotal,
+              },
+            });
+            continue;
+          }
+
+          await tx.order.update({
+            where: { id: orderId },
+            data: {
+              paymentStatus: "APROVADO",
+              ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+            },
+          });
+
+          // Pedido de mesa/comanda só é pago depois que o cliente já recebeu
+          // o prato, então a baixa finaliza o pedido como ENTREGUE.
+          let statusEvent = null;
+          if (
+            (order.mesaId || order.comandaId) &&
+            !["ENTREGUE", "CANCELADO"].includes(order.status)
+          ) {
+            await tx.$executeRaw`
+              UPDATE "Order"
+              SET status = 'ENTREGUE'::"OrderStatus",
+                  "deliveredAt" = NOW(),
+                  "updatedAt" = NOW()
+              WHERE id = ${orderId}
+            `;
+            statusEvent = {
+              orderId,
+              userId: order.userId,
+              previousStatus: order.status,
+              status: "ENTREGUE",
+            };
+          }
+
+          pendingEvents.push({
+            status: statusEvent,
+            payment: {
+              orderId,
+              userId: order.userId,
+              paymentStatus: "APROVADO",
+              ...(normalizedItemIds.length ? { amount: 0 } : {}),
+            },
+          });
+        }
+
+        return pendingEvents;
+      },
+      { timeout: 30000 },
+    );
+
+    for (const event of events) {
+      if (event.status) emitOrderStatusUpdated(event.status);
+      emitPaymentUpdated(event.payment);
+    }
   }
 
   async markOrderItemsPaid(orderId, user, paymentMethod, itemIds = []) {
@@ -1630,37 +1843,12 @@ export class OrderService {
       return this.markPaidByMotoboy(orderId, user, paymentMethod);
     }
 
-    const unpaidItems = (order.items ?? []).filter((item) => !item.paidAt);
-    const validIds = new Set(unpaidItems.map((item) => item.id));
+    await this.#settleOrdersPayment(
+      [{ orderId, itemIds: normalizedItemIds }],
+      paymentMethod,
+    );
 
-    if (normalizedItemIds.some((itemId) => !validIds.has(itemId))) {
-      throw new AppError("Um ou mais itens nao estao abertos neste pedido.", 422);
-    }
-
-    await this.orderRepository.markItemsPaid(orderId, normalizedItemIds);
-    const remaining = await this.orderRepository.getUnpaidTotal(orderId);
-
-    let updatedOrder = await this.orderRepository.findById(orderId);
-
-    if (remaining.count === 0) {
-      updatedOrder = await this.orderRepository.updatePaymentStatus(
-        orderId,
-        "APROVADO",
-        paymentMethod,
-      );
-      updatedOrder = await this._autoDeliverPaidInHouseOrder(updatedOrder);
-    } else {
-      await this.paymentRepository.updateAmount(orderId, remaining.total);
-    }
-
-    emitPaymentUpdated({
-      orderId,
-      userId: order.userId,
-      paymentStatus: remaining.count === 0 ? "APROVADO" : "PENDENTE",
-      amount: remaining.total,
-    });
-
-    return updatedOrder;
+    return this.orderRepository.findById(orderId);
   }
 
   async deleteOrder(orderId, userId) {

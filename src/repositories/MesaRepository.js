@@ -1,3 +1,4 @@
+import { startOfBusinessDay } from "../lib/businessDay.js";
 import { prisma } from "../lib/prisma.js";
 
 export class MesaRepository {
@@ -26,8 +27,7 @@ export class MesaRepository {
   }
 
   async findAllOpenTotals() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfBusinessDay();
     const rows = await prisma.$queryRaw`
       SELECT
         o."mesaId",
@@ -48,8 +48,7 @@ export class MesaRepository {
   }
 
   async findOrdersToday(mesaId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfBusinessDay();
     const orders = await prisma.order.findMany({
       where: {
         mesaId,

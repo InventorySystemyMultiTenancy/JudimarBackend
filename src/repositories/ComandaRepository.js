@@ -1,10 +1,5 @@
+import { startOfBusinessDay } from "../lib/businessDay.js";
 import { prisma } from "../lib/prisma.js";
-
-function startOfToday() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-}
 
 async function attachProducts(orders) {
   if (!orders.length) return [];
@@ -98,17 +93,33 @@ export class ComandaRepository {
   }
 
   async findAllOpenTotals() {
+    // Mesma regra do caixa: so conta pedido com item em aberto, e se parte
+    // ja foi paga soma apenas os itens em aberto. Antes um pedido com todos
+    // os itens pagos (mas ainda PENDENTE) ficava "ativo" aqui e sumido do caixa.
     const rows = await prisma.$queryRaw`
       SELECT
         o."comandaId",
-        SUM(o.total) AS "pendingTotal",
+        SUM(
+          CASE WHEN items.paid_count = 0 THEN o.total
+               ELSE items.unpaid_total END
+        ) AS "pendingTotal",
         COUNT(o.id)  AS "activeCount"
       FROM "Order" o
+      CROSS JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE oi."paidAt" IS NULL) AS unpaid_count,
+          COUNT(*) FILTER (WHERE oi."paidAt" IS NOT NULL) AS paid_count,
+          COALESCE(SUM(oi."totalPrice") FILTER (WHERE oi."paidAt" IS NULL), 0)
+            AS unpaid_total
+        FROM "OrderItem" oi
+        WHERE oi."orderId" = o.id
+      ) items
       WHERE o."comandaId" IS NOT NULL
         AND o.status::text <> 'CANCELADO'
         AND o."paymentStatus"::text <> 'APROVADO'
         AND COALESCE(o."paymentMethod"::text, '') <> 'PENDENTE'
         AND o.total > 0
+        AND items.unpaid_count > 0
       GROUP BY o."comandaId"
     `;
 
@@ -123,8 +134,20 @@ export class ComandaRepository {
     const orders = await prisma.order.findMany({
       where: {
         comandaId,
-        createdAt: { gte: startOfToday() },
         status: { notIn: ["CANCELADO"] },
+        // Pedidos do dia + pedidos antigos que ainda tem item em aberto, para a
+        // comanda mostrar (e dar baixa em) tudo o que o caixa tambem mostra.
+        OR: [
+          { createdAt: { gte: startOfBusinessDay() } },
+          {
+            paymentStatus: { not: "APROVADO" },
+            items: { some: { paidAt: null } },
+            OR: [
+              { paymentMethod: null },
+              { paymentMethod: { not: "PENDENTE" } },
+            ],
+          },
+        ],
       },
       include: {
         items: true,

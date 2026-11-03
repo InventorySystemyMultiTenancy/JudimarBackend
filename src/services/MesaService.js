@@ -72,7 +72,7 @@ export class MesaService {
     const accessToken = jwt.sign(
       { role: "MESA", mesaId: mesa.id, mesaNumber: mesa.number },
       process.env.JWT_SECRET,
-      { subject: mesa.id, expiresIn: "12h" },
+      { subject: mesa.id },
     );
 
     return {

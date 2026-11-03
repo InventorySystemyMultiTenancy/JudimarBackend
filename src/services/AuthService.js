@@ -65,7 +65,10 @@ export class AuthService {
       const token = jwt.sign(
         { role: user.role, email: user.email || null },
         process.env.JWT_SECRET,
-        { subject: user.id, expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
+        {
+          subject: user.id,
+          ...(process.env.JWT_EXPIRES_IN && { expiresIn: process.env.JWT_EXPIRES_IN }),
+        },
       );
       return {
         accessToken: token,
@@ -94,7 +97,10 @@ export class AuthService {
     const token = jwt.sign(
       { role: user.role, email: user.email || null },
       process.env.JWT_SECRET,
-      { subject: user.id, expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
+      {
+          subject: user.id,
+          ...(process.env.JWT_EXPIRES_IN && { expiresIn: process.env.JWT_EXPIRES_IN }),
+        },
     );
 
     return {
